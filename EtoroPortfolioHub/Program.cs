@@ -1,26 +1,33 @@
 using EtoroPortfolioHub.Components;
+using EtoroPortfolioHub.Models;
+using EtoroPortfolioHub.Services;
+using EtoroPortfolioHub.State;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+builder.Services.Configure<EtoroOptions>(
+    builder.Configuration.GetSection(EtoroOptions.SectionName));
+
+builder.Services.AddSingleton<PortfolioState>();
+
+builder.Services.AddHttpClient<EtoroRestClient>();
+
+builder.Services.AddHostedService<PortfolioRefreshService>();
+
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
 {
-    app.UseExceptionHandler("/Error", createScopeForErrors: true);
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
-    app.UseHsts();
+    app.UseExceptionHandler("/Error");
 }
-app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
-app.UseHttpsRedirection();
 
+app.UseHttpsRedirection();
+app.UseStaticFiles();
 app.UseAntiforgery();
 
-app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 

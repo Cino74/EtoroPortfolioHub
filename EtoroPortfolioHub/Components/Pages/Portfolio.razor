@@ -1,0 +1,249 @@
+﻿@page "/portfolio"
+@using EtoroPortfolioHub.Models
+@using EtoroPortfolioHub.State
+@using Microsoft.Extensions.Options
+@inject PortfolioState PortfolioState
+@inject IOptionsMonitor<EtoroOptions> EtoroOptionsMonitor
+
+@implements IAsyncDisposable
+
+<PageTitle>Portfolio</PageTitle>
+
+<h3 class="mb-3">Portafoglio</h3>
+
+<div class="mb-3">
+    <span class="badge text-bg-secondary">
+        Refresh ogni @_refreshIntervalSeconds secondi
+    </span>
+</div>
+
+@if (_snapshot is null)
+{
+    <div class="alert alert-info">
+        Caricamento dati...
+    </div>
+}
+else
+{
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Titoli in portafoglio</div>
+                    <div class="fs-4 fw-bold">@_groupedRows.Count</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Totale investito</div>
+                    <div class="fs-4 fw-bold">@_groupedRows.Sum(x => x.TotalInvested).ToString("N2")</div>
+                </div>
+            </div>
+        </div>
+
+
+        <div class="col-md-3">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Saldo disponibile</div>
+                    <div class="fs-4 fw-bold">@_snapshot.AvailableCash.ToString("N2")</div>
+                </div>
+            </div>
+        </div>
+
+
+        <div class="col-md-3">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Rendimento / Perdita</div>
+                    <div class="fs-4 fw-bold @(_snapshot.ProfitLoss >= 0 ? "text-success" : "text-danger")">
+                        @_snapshot.ProfitLoss.ToString("N2")
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        
+        <div class="alert alert-light border">
+            <div><strong>DEBUG Credit raw:</strong> @_snapshot.Credit</div>
+            <div><strong>DEBUG UnrealizedPnL raw:</strong> @_snapshot.UnrealizedPnL</div>
+            <div><strong>DEBUG AvailableCash:</strong> @_snapshot.AvailableCash</div>
+            <div><strong>DEBUG ProfitLoss:</strong> @_snapshot.ProfitLoss</div>
+        </div>
+
+    </div>
+
+    <div class="card shadow-sm mb-3">
+        <div class="card-body">
+            <div>
+                <strong>Ultimo aggiornamento locale:</strong>
+                @_snapshot.LastUpdated.LocalDateTime.ToString("dd/MM/yyyy HH:mm:ss")
+            </div>
+        </div>
+    </div>
+
+    @if (_groupedRows.Count == 0)
+    {
+        <div class="alert alert-warning">
+            Nessuna posizione disponibile.
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>Titolo</th>
+                        <th>Direzione</th>
+                        <th>Posizioni</th>
+                        <th>Totale investito</th>
+                        <th>Totale units</th>
+                        <th>Open Rate medio</th>
+                        <th>Current Rate</th>
+                        <th>Leverage medio</th>
+                        <th>Take Profit medio</th>
+                        <th>Stop Loss medio</th>
+                        <th>P/L totale</th>
+                        <th>P/L %</th>
+                        <th>Ultimo timestamp</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in _groupedRows)
+                    {
+                        <tr>
+                            <td>
+                                <div><strong>@row.Symbol</strong></div>
+                                <div class="text-muted small">@row.InstrumentName</div>
+                                <div class="text-muted small">ID: @row.InstrumentId</div>
+                            </td>
+                            <td>@row.Direction</td>
+                            <td>@row.PositionsCount</td>
+                            <td>@row.TotalInvested.ToString("N2")</td>
+                            <td>@row.TotalUnits.ToString("N4")</td>
+                            <td>@row.AverageOpenRate.ToString("N4")</td>
+                            <td>@row.CurrentRate.ToString("N4")</td>
+                            <td>@row.AverageLeverage.ToString("N2")</td>
+                            <td>@row.AverageTakeProfitRate.ToString("N4")</td>
+                            <td>@row.AverageStopLossRate.ToString("N4")</td>
+                            <td class="@(row.TotalPnL >= 0 ? "text-success" : "text-danger")">
+                                @row.TotalPnL.ToString("N2")
+                            </td>
+                            <td class="@(row.ProfitPercent >= 0 ? "text-success" : "text-danger")">
+                                @row.ProfitPercent.ToString("N2") %
+                            </td>
+                            <td>@(row.LastTimestamp?.LocalDateTime.ToString("dd/MM/yyyy HH:mm:ss") ?? "-")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    private PortfolioSnapshot? _snapshot;
+    private List<PortfolioGroupedRowDto> _groupedRows = new();
+    private PeriodicTimer? _timer;
+    private CancellationTokenSource? _cts;
+    private int _refreshIntervalSeconds;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _refreshIntervalSeconds = Math.Max(1, EtoroOptionsMonitor.CurrentValue.RefreshIntervalSeconds);
+
+        await LoadSnapshotAsync();
+
+        _cts = new CancellationTokenSource();
+        _timer = new PeriodicTimer(TimeSpan.FromSeconds(_refreshIntervalSeconds));
+
+        _ = StartRefreshLoopAsync(_cts.Token);
+    }
+
+    private async Task StartRefreshLoopAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (_timer is not null && await _timer.WaitForNextTickAsync(cancellationToken))
+            {
+                await LoadSnapshotAsync();
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private Task LoadSnapshotAsync()
+    {
+        _snapshot = PortfolioState.GetSnapshot();
+        _groupedRows = BuildGroupedRows(_snapshot);
+        return Task.CompletedTask;
+    }
+
+    private static List<PortfolioGroupedRowDto> BuildGroupedRows(PortfolioSnapshot snapshot)
+    {
+        return snapshot.Positions
+            .GroupBy(p => p.InstrumentId)
+            .Select(group =>
+            {
+                var totalInvested = group.Sum(x => x.InvestedAmount);
+                var totalUnits = group.Sum(x => x.Units);
+                var totalPnL = group.Sum(x => x.NetProfit);
+
+                var weightedOpenRate = totalInvested == 0
+                    ? 0
+                    : group.Sum(x => x.OpenRate * x.InvestedAmount) / totalInvested;
+
+                var weightedLeverage = totalInvested == 0
+                    ? 0
+                    : group.Sum(x => x.Leverage * x.InvestedAmount) / totalInvested;
+
+                var weightedTakeProfit = totalInvested == 0
+                    ? 0
+                    : group.Sum(x => x.TakeProfitRate * x.InvestedAmount) / totalInvested;
+
+                var weightedStopLoss = totalInvested == 0
+                    ? 0
+                    : group.Sum(x => x.StopLossRate * x.InvestedAmount) / totalInvested;
+
+                var directions = group.Select(x => x.IsBuy ? "LONG" : "SHORT").Distinct().ToList();
+                var direction = directions.Count == 1 ? directions[0] : "MIXED";
+
+                return new PortfolioGroupedRowDto
+                {
+                    InstrumentId = group.Key,
+                    Symbol = group.Select(x => x.Symbol).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? group.Key.ToString(),
+                    InstrumentName = group.Select(x => x.InstrumentName).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? $"Strumento {group.Key}",
+                    Direction = direction,
+                    PositionsCount = group.Count(),
+                    TotalInvested = totalInvested,
+                    TotalUnits = totalUnits,
+                    AverageOpenRate = weightedOpenRate,
+                    CurrentRate = group.Select(x => x.CurrentRate).LastOrDefault(),
+                    AverageLeverage = weightedLeverage,
+                    AverageTakeProfitRate = weightedTakeProfit,
+                    AverageStopLossRate = weightedStopLoss,
+                    TotalPnL = totalPnL,
+                    ProfitPercent = totalInvested == 0 ? 0 : Math.Round(totalPnL / totalInvested * 100m, 2),
+                    LastTimestamp = group.Max(x => x.Timestamp)
+                };
+            })
+            .OrderBy(x => x.Symbol)
+            .ToList();
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        _cts?.Cancel();
+        _cts?.Dispose();
+        _timer?.Dispose();
+
+        return ValueTask.CompletedTask;
+    }
+}
