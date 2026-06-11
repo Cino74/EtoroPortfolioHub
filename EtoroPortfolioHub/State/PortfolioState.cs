@@ -19,6 +19,14 @@ public sealed class PortfolioState
             return new PortfolioSnapshot
             {
                 LastUpdated = _snapshot.LastUpdated,
+
+                // ✅ campi riepilogo
+                Credit = _snapshot.Credit,
+                UnrealizedPnL = _snapshot.UnrealizedPnL,
+                AvailableCash = _snapshot.AvailableCash,
+                ProfitLoss = _snapshot.ProfitLoss,
+
+                // ✅ clone profondo delle posizioni
                 Positions = _snapshot.Positions
                     .Select(p => new PositionDto
                     {
@@ -30,7 +38,12 @@ public sealed class PortfolioState
                         InvestedAmount = p.InvestedAmount,
                         OpenRate = p.OpenRate,
                         CurrentRate = p.CurrentRate,
-                        NetProfit = p.NetProfit
+                        NetProfit = p.NetProfit,
+                        Units = p.Units,
+                        Leverage = p.Leverage,
+                        TakeProfitRate = p.TakeProfitRate,
+                        StopLossRate = p.StopLossRate,
+                        Timestamp = p.Timestamp
                     })
                     .ToList()
             };

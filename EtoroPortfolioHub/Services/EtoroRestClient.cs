@@ -47,10 +47,14 @@ public sealed class EtoroRestClient
 
         var snapshot = ParsePortfolioResponse(raw);
 
-        // Arricchimento con nome/simbolo degli strumenti.
-        var metadata = await GetInstrumentMetadataAsync(
-            snapshot.Positions.Select(p => p.InstrumentId),
-            cancellationToken);
+        var instrumentIds = snapshot.Positions
+            .Select(p => p.InstrumentId)
+            .Where(id => id > 0)
+            .Distinct()
+            .ToList();
+
+        // 1) Enrichment nomi/simboli
+        var metadata = await GetInstrumentMetadataAsync(instrumentIds, cancellationToken);
 
         foreach (var position in snapshot.Positions)
         {
@@ -70,8 +74,91 @@ public sealed class EtoroRestClient
                 position.Symbol = position.InstrumentId.ToString();
         }
 
+        // 2) Enrichment prezzi correnti
+        var rates = await GetInstrumentRatesAsync(instrumentIds, cancellationToken);
+
+        foreach (var position in snapshot.Positions)
+        {
+            if (rates.TryGetValue(position.InstrumentId, out var rate))
+            {
+                // Per ora usiamo lastExecution come prezzo attuale
+                position.CurrentRate = rate.LastExecution != 0m
+                    ? rate.LastExecution
+                    : (rate.Bid != 0m ? rate.Bid : rate.Ask);
+
+                // Se non hai timestamp posizione, puoi usare quello del rate
+                if (position.Timestamp is null)
+                    position.Timestamp = rate.Date;
+            }
+        }
+
         return snapshot;
     }
+
+    private async Task<Dictionary<int, InstrumentRateDto>> GetInstrumentRatesAsync(
+    IEnumerable<int> instrumentIds,
+    CancellationToken cancellationToken = default)
+    {
+        var ids = instrumentIds
+            .Where(id => id > 0)
+            .Distinct()
+            .ToList();
+
+        if (ids.Count == 0)
+            return new Dictionary<int, InstrumentRateDto>();
+
+        var url =
+            $"https://public-api.etoro.com/api/v1/market-data/instruments/rates?instrumentIds={string.Join(",", ids)}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Add("x-api-key", _options.ApiKey);
+        request.Headers.Add("x-user-key", _options.UserKey);
+        request.Headers.Add("x-request-id", Guid.NewGuid().ToString());
+
+        _logger.LogInformation("Chiamata market-data rates verso URL: {Url}", url);
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var raw = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "Errore market-data rates. Status: {StatusCode}. URL: {Url}. Body: {Body}",
+                response.StatusCode,
+                url,
+                raw);
+
+            return new Dictionary<int, InstrumentRateDto>();
+        }
+
+        using var document = JsonDocument.Parse(raw);
+        var root = document.RootElement;
+
+        var result = new Dictionary<int, InstrumentRateDto>();
+
+        if (root.TryGetProperty("rates", out var rates) &&
+            rates.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in rates.EnumerateArray())
+            {
+                var instrumentId = GetInt32(item, "instrumentID", "instrumentId");
+                if (instrumentId == 0)
+                    continue;
+
+                result[instrumentId] = new InstrumentRateDto
+                {
+                    InstrumentId = instrumentId,
+                    Ask = GetDecimal(item, "ask"),
+                    Bid = GetDecimal(item, "bid"),
+                    LastExecution = GetDecimal(item, "lastExecution"),
+                    Date = GetDateTimeOffset(item, "date")
+                };
+            }
+        }
+
+        return result;
+    }
+
 
     private string BuildPortfolioUrl()
     {

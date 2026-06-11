@@ -14,6 +14,8 @@ builder.Services.AddHttpClient<EtoroRestClient>();
 
 builder.Services.AddHostedService<PortfolioRefreshService>();
 
+builder.Services.AddSingleton<PortfolioTargetService>();
+
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 

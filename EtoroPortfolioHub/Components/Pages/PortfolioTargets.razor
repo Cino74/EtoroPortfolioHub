@@ -1,0 +1,218 @@
+﻿@page "/portfolio-targets"
+@using EtoroPortfolioHub.Models
+@using EtoroPortfolioHub.State
+@using EtoroPortfolioHub.Services
+@inject PortfolioState PortfolioState
+@inject PortfolioTargetService PortfolioTargetService
+
+<PageTitle>Target Portafoglio</PageTitle>
+
+<h3 class="mb-3">Target Portafoglio</h3>
+
+@if (_isLoading)
+{
+    <div class="alert alert-info">
+        Caricamento dati...
+    </div>
+}
+else
+{
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Titoli in portafoglio</div>
+                    <div class="fs-4 fw-bold">@_rows.Count</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Totale investito</div>
+                    <div class="fs-4 fw-bold">@_totalInvested.ToString("N2")</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Totale target impostato</div>
+                    <div class="fs-4 fw-bold @(TotalTarget > 100 ? "text-danger" : "text-success")">
+                        @TotalTarget.ToString("N2") %
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3 d-flex align-items-stretch">
+            <button class="btn btn-primary w-100" @onclick="SaveAsync">
+                Salva target
+            </button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(_message))
+    {
+        <div class="alert @(_isError ? "alert-danger" : "alert-success")">
+            @_message
+        </div>
+    }
+
+    @if (_rows.Count == 0)
+    {
+        <div class="alert alert-warning">
+            Nessun titolo trovato nel portafoglio.
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>Titolo</th>
+                        <th class="text-end">Peso attuale %</th>
+                        <th class="text-end">Target %</th>
+                        <th class="text-end">Differenza %</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in _rows.OrderBy(x => x.Symbol))
+                    {
+                        <tr>
+                            <td>
+                                <div><strong>@row.Symbol</strong></div>
+                                <div class="text-muted small">@row.InstrumentName</div>
+                            </td>
+                            <td class="text-end">@row.CurrentWeightPercentage.ToString("N2") %</td>
+                            <td style="max-width: 160px;">
+                                <InputNumber @bind-Value="row.TargetPercentage"
+                                             class="form-control text-end"
+                                             TValue="decimal" />
+                            </td>
+                            <td class="text-end @(row.DeltaPercentage >= 0 ? "text-success" : "text-danger")">
+                                @row.DeltaPercentage.ToString("N2") %
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    private bool _isLoading = true;
+    private bool _isError = false;
+    private string? _message;
+
+    private List<PortfolioTargetRowVm> _rows = new();
+    private decimal _totalInvested;
+
+    private decimal TotalTarget => _rows.Sum(x => x.TargetPercentage);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        _message = null;
+        _isError = false;
+
+        try
+        {
+            var snapshot = PortfolioState.GetSnapshot();
+
+            // Totale investito del portafoglio
+            _totalInvested = snapshot.Positions.Sum(p => p.InvestedAmount);
+
+            var groupedTitles = snapshot.Positions
+                .GroupBy(p => p.InstrumentId)
+                .Select(g =>
+                {
+                    var totalInvestedForInstrument = g.Sum(x => x.InvestedAmount);
+
+                    return new PortfolioTargetRowVm
+                    {
+                        InstrumentId = g.Key,
+                        Symbol = g.Select(x => x.Symbol).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? g.Key.ToString(),
+                        InstrumentName = g.Select(x => x.InstrumentName).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? $"Strumento {g.Key}",
+                        CurrentInvestedAmount = totalInvestedForInstrument,
+                        CurrentWeightPercentage = _totalInvested == 0
+                            ? 0
+                            : Math.Round(totalInvestedForInstrument / _totalInvested * 100m, 2),
+                        TargetPercentage = 0m
+                    };
+                })
+                .OrderBy(x => x.Symbol)
+                .ToList();
+
+            var savedTargets = await PortfolioTargetService.GetAllAsync();
+
+            foreach (var row in groupedTitles)
+            {
+                if (savedTargets.TryGetValue(row.InstrumentId, out var saved))
+                {
+                    row.TargetPercentage = saved.TargetPercentage;
+                }
+            }
+
+            _rows = groupedTitles;
+        }
+        catch (Exception ex)
+        {
+            _isError = true;
+            _message = $"Errore durante il caricamento: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _message = null;
+        _isError = false;
+
+        try
+        {
+            var items = _rows.Select(x => new PortfolioTargetItem
+            {
+                InstrumentId = x.InstrumentId,
+                Symbol = x.Symbol,
+                InstrumentName = x.InstrumentName,
+                TargetPercentage = x.TargetPercentage
+            }).ToList();
+
+            await PortfolioTargetService.SaveAllAsync(items);
+
+            _message = "Target salvati correttamente.";
+        }
+        catch (Exception ex)
+        {
+            _isError = true;
+            _message = $"Errore durante il salvataggio: {ex.Message}";
+        }
+    }
+
+    private sealed class PortfolioTargetRowVm
+    {
+        public int InstrumentId { get; set; }
+        public string Symbol { get; set; } = string.Empty;
+        public string InstrumentName { get; set; } = string.Empty;
+
+        public decimal CurrentInvestedAmount { get; set; }
+        public decimal CurrentWeightPercentage { get; set; }
+        public decimal TargetPercentage { get; set; }
+
+        public decimal DeltaPercentage => Math.Round(CurrentWeightPercentage - TargetPercentage, 2);
+
+    }
+}

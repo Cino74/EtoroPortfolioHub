@@ -25,6 +25,7 @@
 }
 else
 {
+    <!-- Riepilogo -->
     <div class="row g-3 mb-4">
         <div class="col-md-3">
             <div class="card shadow-sm h-100">
@@ -44,7 +45,6 @@ else
             </div>
         </div>
 
-
         <div class="col-md-3">
             <div class="card shadow-sm h-100">
                 <div class="card-body">
@@ -53,7 +53,6 @@ else
                 </div>
             </div>
         </div>
-
 
         <div class="col-md-3">
             <div class="card shadow-sm h-100">
@@ -65,15 +64,6 @@ else
                 </div>
             </div>
         </div>
-
-        
-        <div class="alert alert-light border">
-            <div><strong>DEBUG Credit raw:</strong> @_snapshot.Credit</div>
-            <div><strong>DEBUG UnrealizedPnL raw:</strong> @_snapshot.UnrealizedPnL</div>
-            <div><strong>DEBUG AvailableCash:</strong> @_snapshot.AvailableCash</div>
-            <div><strong>DEBUG ProfitLoss:</strong> @_snapshot.ProfitLoss</div>
-        </div>
-
     </div>
 
     <div class="card shadow-sm mb-3">
@@ -97,47 +87,128 @@ else
             <table class="table table-striped table-hover align-middle">
                 <thead>
                     <tr>
+                        <th style="width: 50px;"></th>
                         <th>Titolo</th>
                         <th>Direzione</th>
                         <th>Posizioni</th>
                         <th>Totale investito</th>
                         <th>Totale units</th>
-                        <th>Open Rate medio</th>
-                        <th>Current Rate</th>
-                        <th>Leverage medio</th>
-                        <th>Take Profit medio</th>
-                        <th>Stop Loss medio</th>
+                        <th>Prezzo medio</th>
+                        <th>Prezzo attuale</th>
+     @*                    <th>Leverage medio</th> *@
+@*                         <th>Take Profit medio</th>
+                        <th>Stop Loss medio</th> *@
                         <th>P/L totale</th>
                         <th>P/L %</th>
-                        <th>Ultimo timestamp</th>
+                        <th>Ultima apertura</th>
                     </tr>
                 </thead>
                 <tbody>
                     @foreach (var row in _groupedRows)
                     {
-                        <tr>
+                        <tr class="@(IsExpanded(row.InstrumentId) ? "table-active" : "")">
+                            <td>
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-secondary"
+                                        title="Espandi / comprimi"
+                                        @onclick="() => ToggleRow(row.InstrumentId)">
+                                    @(IsExpanded(row.InstrumentId) ? "−" : "+")
+                                </button>
+                            </td>
+
                             <td>
                                 <div><strong>@row.Symbol</strong></div>
                                 <div class="text-muted small">@row.InstrumentName</div>
                                 <div class="text-muted small">ID: @row.InstrumentId</div>
                             </td>
+
                             <td>@row.Direction</td>
                             <td>@row.PositionsCount</td>
                             <td>@row.TotalInvested.ToString("N2")</td>
-                            <td>@row.TotalUnits.ToString("N4")</td>
-                            <td>@row.AverageOpenRate.ToString("N4")</td>
-                            <td>@row.CurrentRate.ToString("N4")</td>
-                            <td>@row.AverageLeverage.ToString("N2")</td>
-                            <td>@row.AverageTakeProfitRate.ToString("N4")</td>
-                            <td>@row.AverageStopLossRate.ToString("N4")</td>
+                            <td>@row.TotalUnits.ToString("N2")</td>
+                            <td>@row.AverageOpenRate.ToString("N2")</td>
+                            <td>@row.CurrentRate.ToString("N2")</td>
+ @*                            <td>@row.AverageLeverage.ToString("N2")</td> *@
+@*                             <td>@row.AverageTakeProfitRate.ToString("N2")</td>
+                            <td>@row.AverageStopLossRate.ToString("N2")</td> *@
                             <td class="@(row.TotalPnL >= 0 ? "text-success" : "text-danger")">
                                 @row.TotalPnL.ToString("N2")
                             </td>
                             <td class="@(row.ProfitPercent >= 0 ? "text-success" : "text-danger")">
                                 @row.ProfitPercent.ToString("N2") %
                             </td>
-                            <td>@(row.LastTimestamp?.LocalDateTime.ToString("dd/MM/yyyy HH:mm:ss") ?? "-")</td>
+                            <td>
+                                @(row.LastTimestamp?.LocalDateTime.ToString("dd/MM/yyyy HH:mm:ss") ?? "-")
+                            </td>
                         </tr>
+
+                        @if (IsExpanded(row.InstrumentId))
+                        {
+                            var details = GetDetailsForInstrument(row.InstrumentId);
+
+                            <tr>
+                                <td colspan="14" class="bg-light">
+                                    <div class="p-2">
+                                        <div class="fw-semibold mb-2">
+                                            Dettaglio posizioni - @row.Symbol (@details.Count)
+                                        </div>
+
+                                        @if (details.Count == 0)
+                                        {
+                                            <div class="text-muted">Nessun dettaglio disponibile.</div>
+                                        }
+                                        else
+                                        {
+                                            <div class="table-responsive">
+                                                <table class="table table-sm table-bordered align-middle mb-0">
+                                                    <thead class="table-light">
+                                                        <tr>
+                                                            @* <th>Position ID</th> *@
+                                                            <th>Direzione</th>
+                                                            <th>Investito</th>
+                                                            <th>Unità</th>
+                                                            <th>Prezzo apertura</th>
+                                                            <th>Prezzo attuale</th>
+                                                            <th>Leva</th>
+                                                            <th>TP</th>
+                                                            <th>SL</th>
+                                                            <th>P/L</th>
+                                                            <th>P/L %</th>
+                                                            <th>Apertura</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        @foreach (var position in details)
+                                                        {
+                                                            <tr>
+                                                                @* <td>@position.PositionId</td> *@
+                                                                <td>@(position.IsBuy ? "LONG" : "SHORT")</td>
+                                                                <td>@position.InvestedAmount.ToString("N2")</td>
+                                                                <td>@position.Units.ToString("N2")</td>
+                                                                <td>@position.OpenRate.ToString("N2")</td>
+                                                                <td>@position.CurrentRate.ToString("N2")</td>
+                                                                <td>@position.Leverage.ToString("N2")</td>
+                                                                <td>@position.TakeProfitRate.ToString("N2")</td>
+                                                                <td>@position.StopLossRate.ToString("N2")</td>
+                                                                <td class="@(position.NetProfit >= 0 ? "text-success" : "text-danger")">
+                                                                    @position.NetProfit.ToString("N2")
+                                                                </td>
+                                                                <td class="@(position.ProfitPercent >= 0 ? "text-success" : "text-danger")">
+                                                                    @position.ProfitPercent.ToString("N2") %
+                                                                </td>
+                                                                <td>
+                                                                    @(position.Timestamp?.LocalDateTime.ToString("dd/MM/yyyy HH:mm:ss") ?? "-")
+                                                                </td>
+                                                            </tr>
+                                                        }
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
                     }
                 </tbody>
             </table>
@@ -148,6 +219,9 @@ else
 @code {
     private PortfolioSnapshot? _snapshot;
     private List<PortfolioGroupedRowDto> _groupedRows = new();
+
+    private readonly Dictionary<int, bool> _expandedRows = new();
+
     private PeriodicTimer? _timer;
     private CancellationTokenSource? _cts;
     private int _refreshIntervalSeconds;
@@ -176,6 +250,7 @@ else
         }
         catch (OperationCanceledException)
         {
+            // chiusura componente
         }
     }
 
@@ -183,7 +258,46 @@ else
     {
         _snapshot = PortfolioState.GetSnapshot();
         _groupedRows = BuildGroupedRows(_snapshot);
+
+        // Mantieni solo le righe espanse ancora esistenti
+        var validIds = _groupedRows.Select(x => x.InstrumentId).ToHashSet();
+        var keysToRemove = _expandedRows.Keys.Where(id => !validIds.Contains(id)).ToList();
+
+        foreach (var key in keysToRemove)
+        {
+            _expandedRows.Remove(key);
+        }
+
         return Task.CompletedTask;
+    }
+
+    private void ToggleRow(int instrumentId)
+    {
+        if (_expandedRows.ContainsKey(instrumentId))
+        {
+            _expandedRows[instrumentId] = !_expandedRows[instrumentId];
+        }
+        else
+        {
+            _expandedRows[instrumentId] = true;
+        }
+    }
+
+    private bool IsExpanded(int instrumentId)
+    {
+        return _expandedRows.TryGetValue(instrumentId, out var expanded) && expanded;
+    }
+
+    private List<PositionDto> GetDetailsForInstrument(int instrumentId)
+    {
+        if (_snapshot is null)
+            return new List<PositionDto>();
+
+        return _snapshot.Positions
+            .Where(p => p.InstrumentId == instrumentId)
+            .OrderByDescending(p => p.Timestamp)
+            .ThenByDescending(p => p.PositionId)
+            .ToList();
     }
 
     private static List<PortfolioGroupedRowDto> BuildGroupedRows(PortfolioSnapshot snapshot)
@@ -225,7 +339,10 @@ else
                     TotalInvested = totalInvested,
                     TotalUnits = totalUnits,
                     AverageOpenRate = weightedOpenRate,
-                    CurrentRate = group.Select(x => x.CurrentRate).LastOrDefault(),
+                    CurrentRate = group
+                        .Where(x => x.CurrentRate != 0)
+                        .Select(x => x.CurrentRate)
+                        .LastOrDefault(),
                     AverageLeverage = weightedLeverage,
                     AverageTakeProfitRate = weightedTakeProfit,
                     AverageStopLossRate = weightedStopLoss,
