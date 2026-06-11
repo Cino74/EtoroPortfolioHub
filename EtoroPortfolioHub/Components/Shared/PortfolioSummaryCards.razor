@@ -1,0 +1,68 @@
+﻿@using EtoroPortfolioHub.Models
+
+@if (Snapshot is not null)
+{
+    <div class="summary-section mb-4">
+        <div class="row g-3">
+            <div class="col-md-6 col-lg">
+                <div class="card shadow-sm h-100 summary-card">
+                    <div class="card-body">
+                        <div class="summary-label">Titoli in portafoglio</div>
+                        <div class="summary-value">@TitlesCount</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6 col-lg">
+                <div class="card shadow-sm h-100 summary-card">
+                    <div class="card-body">
+                        <div class="summary-label">Totale investito</div>
+                        <div class="summary-value">@TotalInvested.ToString("N2")</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6 col-lg">
+                <div class="card shadow-sm h-100 summary-card">
+                    <div class="card-body">
+                        <div class="summary-label">Saldo disponibile</div>
+                        <div class="summary-value">@Snapshot.AvailableCash.ToString("N2")</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6 col-lg">
+                <div class="card shadow-sm h-100 summary-card">
+                    <div class="card-body">
+                        <div class="summary-label">Rendimento / Perdita</div>
+                        <div class="summary-value @(Snapshot.ProfitLoss >= 0 ? "text-success" : "text-danger")">
+                            @Snapshot.ProfitLoss.ToString("N2")
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6 col-lg">
+                <div class="card shadow-sm h-100 summary-card summary-card-highlight">
+                    <div class="card-body">
+                        <div class="summary-label">Valore totale portafoglio</div>
+                        <div class="summary-value text-primary">
+                            @Snapshot.TotalPortfolioValue.ToString("N2")
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public PortfolioSnapshot? Snapshot { get; set; }
+
+    [Parameter]
+    public int TitlesCount { get; set; }
+
+    [Parameter]
+    public decimal TotalInvested { get; set; }
+}

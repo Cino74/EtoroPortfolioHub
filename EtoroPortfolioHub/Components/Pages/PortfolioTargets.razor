@@ -47,11 +47,34 @@ else
             </div>
         </div>
 
-        <div class="col-md-3 d-flex align-items-stretch">
-            <button class="btn btn-primary w-100" @onclick="SaveAsync">
-                Salva target
-            </button>
+        <div class="col-md-3">
+            <div class="card shadow-sm h-100">
+                <div class="card-body d-flex flex-column justify-content-center gap-2">
+                    <button class="btn btn-outline-secondary" @onclick="RefreshAsync">
+                        Aggiorna
+                    </button>
+                    <button class="btn btn-primary" @onclick="SaveAsync">
+                        Salva target
+                    </button>
+                </div>
+            </div>
         </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <strong>Ultimo aggiornamento:</strong>
+            @(_lastRefresh?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "-")
+        </div>
+    </div>
+
+    <div class="alert alert-light border mb-4">
+        <strong>Nota:</strong>
+        <ul class="mb-0 mt-2">
+            <li><strong>Delta valore positivo</strong> → devi <strong>aggiungere</strong> capitale per raggiungere il target.</li>
+            <li><strong>Delta valore negativo</strong> → devi <strong>ridurre</strong> capitale perché sei sopra target.</li>
+            <li><strong>Delta valore pari a 0</strong> → il titolo è <strong>allineato</strong>.</li>
+        </ul>
     </div>
 
     @if (!string.IsNullOrWhiteSpace(_message))
@@ -77,6 +100,7 @@ else
                         <th class="text-end">Peso attuale %</th>
                         <th class="text-end">Target %</th>
                         <th class="text-end">Differenza %</th>
+                        <th class="text-end">Delta valore $</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -87,14 +111,24 @@ else
                                 <div><strong>@row.Symbol</strong></div>
                                 <div class="text-muted small">@row.InstrumentName</div>
                             </td>
-                            <td class="text-end">@row.CurrentWeightPercentage.ToString("N2") %</td>
+
+                            <td class="text-end">
+                                @row.CurrentWeightPercentage.ToString("N2") %
+                            </td>
+
                             <td style="max-width: 160px;">
                                 <InputNumber @bind-Value="row.TargetPercentage"
                                              class="form-control text-end"
                                              TValue="decimal" />
                             </td>
+
                             <td class="text-end @(row.DeltaPercentage >= 0 ? "text-success" : "text-danger")">
                                 @row.DeltaPercentage.ToString("N2") %
+                            </td>
+
+                            <td class="text-end @GetDeltaValueCssClass(row)">
+                                <div>@row.DeltaValue.ToString("N2")</div>
+                                <div class="small text-muted">@row.DeltaAction</div>
                             </td>
                         </tr>
                     }
@@ -111,6 +145,7 @@ else
 
     private List<PortfolioTargetRowVm> _rows = new();
     private decimal _totalInvested;
+    private DateTimeOffset? _lastRefresh;
 
     private decimal TotalTarget => _rows.Sum(x => x.TargetPercentage);
 
@@ -119,7 +154,12 @@ else
         await LoadAsync();
     }
 
-    private async Task LoadAsync()
+    private async Task RefreshAsync()
+    {
+        await LoadAsync(keepUserTargets: true);
+    }
+
+    private async Task LoadAsync(bool keepUserTargets = false)
     {
         _isLoading = true;
         _message = null;
@@ -129,7 +169,11 @@ else
         {
             var snapshot = PortfolioState.GetSnapshot();
 
-            // Totale investito del portafoglio
+            // Mantieni i target già digitati se richiesto
+            var currentTargets = keepUserTargets
+                ? _rows.ToDictionary(x => x.InstrumentId, x => x.TargetPercentage)
+                : null;
+
             _totalInvested = snapshot.Positions.Sum(p => p.InvestedAmount);
 
             var groupedTitles = snapshot.Positions
@@ -144,6 +188,7 @@ else
                         Symbol = g.Select(x => x.Symbol).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? g.Key.ToString(),
                         InstrumentName = g.Select(x => x.InstrumentName).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? $"Strumento {g.Key}",
                         CurrentInvestedAmount = totalInvestedForInstrument,
+                        TotalPortfolioInvested = _totalInvested,
                         CurrentWeightPercentage = _totalInvested == 0
                             ? 0
                             : Math.Round(totalInvestedForInstrument / _totalInvested * 100m, 2),
@@ -153,17 +198,33 @@ else
                 .OrderBy(x => x.Symbol)
                 .ToList();
 
-            var savedTargets = await PortfolioTargetService.GetAllAsync();
-
-            foreach (var row in groupedTitles)
+            // Se sto aggiornando manualmente, mantengo i target già presenti in pagina
+            if (currentTargets is not null)
             {
-                if (savedTargets.TryGetValue(row.InstrumentId, out var saved))
+                foreach (var row in groupedTitles)
                 {
-                    row.TargetPercentage = saved.TargetPercentage;
+                    if (currentTargets.TryGetValue(row.InstrumentId, out var target))
+                    {
+                        row.TargetPercentage = target;
+                    }
+                }
+            }
+            else
+            {
+                // Al primo caricamento, carico dal file
+                var savedTargets = await PortfolioTargetService.GetAllAsync();
+
+                foreach (var row in groupedTitles)
+                {
+                    if (savedTargets.TryGetValue(row.InstrumentId, out var saved))
+                    {
+                        row.TargetPercentage = saved.TargetPercentage;
+                    }
                 }
             }
 
             _rows = groupedTitles;
+            _lastRefresh = DateTimeOffset.Now;
         }
         catch (Exception ex)
         {
@@ -202,6 +263,17 @@ else
         }
     }
 
+    private static string GetDeltaValueCssClass(PortfolioTargetRowVm row)
+    {
+        if (row.DeltaValue > 0)
+            return "text-danger";   // manca capitale → devi aggiungere
+
+        if (row.DeltaValue < 0)
+            return "text-success";  // sei sopra target → devi ridurre
+
+        return "text-muted";
+    }
+
     private sealed class PortfolioTargetRowVm
     {
         public int InstrumentId { get; set; }
@@ -209,10 +281,28 @@ else
         public string InstrumentName { get; set; } = string.Empty;
 
         public decimal CurrentInvestedAmount { get; set; }
+        public decimal TotalPortfolioInvested { get; set; }
+
         public decimal CurrentWeightPercentage { get; set; }
         public decimal TargetPercentage { get; set; }
 
+        // Differenza percentuale "come prima":
+        // verde se >= 0, rosso se manca rispetto al target
         public decimal DeltaPercentage => Math.Round(CurrentWeightPercentage - TargetPercentage, 2);
 
+        // Valore target monetario per il titolo
+        public decimal TargetValue =>
+            Math.Round(TotalPortfolioInvested * TargetPercentage / 100m, 2);
+
+        // Delta monetario operativo:
+        // > 0 -> devi aggiungere
+        // < 0 -> devi ridurre
+        public decimal DeltaValue =>
+            Math.Round(TargetValue - CurrentInvestedAmount, 2);
+
+        public string DeltaAction =>
+            DeltaValue > 0 ? "Aggiungere"
+            : DeltaValue < 0 ? "Ridurre"
+            : "Allineato";
     }
 }

@@ -1,0 +1,24 @@
+﻿.summary-section {
+    width: 100%;
+}
+
+.summary-card {
+    border-radius: 1rem;
+    border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.summary-card-highlight {
+    border: 1px solid rgba(13, 110, 253, 0.25);
+}
+
+.summary-label {
+    font-size: 0.85rem;
+    color: #6c757d;
+    margin-bottom: 0.45rem;
+}
+
+.summary-value {
+    font-size: 1.65rem;
+    font-weight: 700;
+    line-height: 1.2;
+}

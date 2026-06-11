@@ -1,7 +1,140 @@
 ﻿@page "/"
+@using EtoroPortfolioHub.Models
+@using EtoroPortfolioHub.State
+@using EtoroPortfolioHub.Components.Shared
+@using Microsoft.Extensions.Options
+@inject PortfolioState PortfolioState
+@inject IOptionsMonitor<EtoroOptions> EtoroOptionsMonitor
+
+@implements IAsyncDisposable
 
 <PageTitle>Home</PageTitle>
 
-<h1>Hello, world!</h1>
+<h3 class="mb-3">Dashboard</h3>
 
-Welcome to your new app.
+@if (_snapshot is null)
+{
+    <div class="alert alert-info">
+        Caricamento dati...
+    </div>
+}
+else
+{
+    <!-- KPI in alto -->
+    <PortfolioSummaryCards Snapshot="_snapshot"
+                           TitlesCount="_titlesCount"
+                           TotalInvested="_totalInvested" />
+
+    <!-- Blocco info aggiornamento -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <div>
+                <strong>Ultimo aggiornamento locale:</strong>
+                @_snapshot.LastUpdated.LocalDateTime.ToString("dd/MM/yyyy HH:mm:ss")
+            </div>
+        </div>
+    </div>
+
+    <!-- Sezione predisposta per future informazioni -->
+    <div class="row g-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Panoramica</h5>
+                    <p class="text-muted mb-0">
+                        Questa sezione è pronta per ospitare ulteriori informazioni:
+                        grafici, performance, allocazione, alert, indicatori o riepiloghi avanzati.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h6 class="card-title mb-3">Sezione futura 1</h6>
+                    <p class="text-muted mb-0">
+                        Qui potremo aggiungere ad esempio grafici della performance del portafoglio,
+                        andamento storico o confronto con i target.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h6 class="card-title mb-3">Sezione futura 2</h6>
+                    <p class="text-muted mb-0">
+                        Qui potremo aggiungere informazioni come alert, riepiloghi per settore,
+                        differenze target/attuale o segnali operativi.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private PortfolioSnapshot? _snapshot;
+    private PeriodicTimer? _timer;
+    private CancellationTokenSource? _cts;
+    private int _refreshIntervalSeconds;
+
+    private int _titlesCount;
+    private decimal _totalInvested;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _refreshIntervalSeconds = Math.Max(1, EtoroOptionsMonitor.CurrentValue.RefreshIntervalSeconds);
+
+        await LoadSnapshotAsync();
+
+        _cts = new CancellationTokenSource();
+        _timer = new PeriodicTimer(TimeSpan.FromSeconds(_refreshIntervalSeconds));
+
+        _ = StartRefreshLoopAsync(_cts.Token);
+    }
+
+    private async Task StartRefreshLoopAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (_timer is not null && await _timer.WaitForNextTickAsync(cancellationToken))
+            {
+                await LoadSnapshotAsync();
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Chiusura normale del componente
+        }
+    }
+
+    private Task LoadSnapshotAsync()
+    {
+        _snapshot = PortfolioState.GetSnapshot();
+
+        if (_snapshot is not null)
+        {
+            _titlesCount = _snapshot.Positions
+                .Select(p => p.InstrumentId)
+                .Distinct()
+                .Count();
+
+            _totalInvested = _snapshot.Positions.Sum(p => p.InvestedAmount);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        _cts?.Cancel();
+        _cts?.Dispose();
+        _timer?.Dispose();
+
+        return ValueTask.CompletedTask;
+    }
+}

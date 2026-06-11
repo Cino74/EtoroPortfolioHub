@@ -15,4 +15,9 @@ public sealed class PortfolioSnapshot
 
     public int TotalPositions => Positions.Count;
     public decimal TotalInvested => Positions.Sum(p => p.InvestedAmount);
+
+
+    // Valore totale del portafoglio
+    public decimal TotalPortfolioValue => AvailableCash + TotalInvested + ProfitLoss;
+
 }

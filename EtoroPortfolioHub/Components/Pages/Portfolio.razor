@@ -4,6 +4,7 @@
 @using Microsoft.Extensions.Options
 @inject PortfolioState PortfolioState
 @inject IOptionsMonitor<EtoroOptions> EtoroOptionsMonitor
+@using EtoroPortfolioHub.Components.Shared
 
 @implements IAsyncDisposable
 
@@ -25,46 +26,9 @@
 }
 else
 {
-    <!-- Riepilogo -->
-    <div class="row g-3 mb-4">
-        <div class="col-md-3">
-            <div class="card shadow-sm h-100">
-                <div class="card-body">
-                    <div class="text-muted small">Titoli in portafoglio</div>
-                    <div class="fs-4 fw-bold">@_groupedRows.Count</div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-md-3">
-            <div class="card shadow-sm h-100">
-                <div class="card-body">
-                    <div class="text-muted small">Totale investito</div>
-                    <div class="fs-4 fw-bold">@_groupedRows.Sum(x => x.TotalInvested).ToString("N2")</div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-md-3">
-            <div class="card shadow-sm h-100">
-                <div class="card-body">
-                    <div class="text-muted small">Saldo disponibile</div>
-                    <div class="fs-4 fw-bold">@_snapshot.AvailableCash.ToString("N2")</div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-md-3">
-            <div class="card shadow-sm h-100">
-                <div class="card-body">
-                    <div class="text-muted small">Rendimento / Perdita</div>
-                    <div class="fs-4 fw-bold @(_snapshot.ProfitLoss >= 0 ? "text-success" : "text-danger")">
-                        @_snapshot.ProfitLoss.ToString("N2")
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+    <PortfolioSummaryCards Snapshot="_snapshot"
+                           TitlesCount="_groupedRows.Count"
+                           TotalInvested="_groupedRows.Sum(x => x.TotalInvested)" />
 
     <div class="card shadow-sm mb-3">
         <div class="card-body">
