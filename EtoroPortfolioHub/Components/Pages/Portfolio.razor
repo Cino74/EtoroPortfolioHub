@@ -59,9 +59,6 @@ else
                         <th>Totale units</th>
                         <th>Prezzo medio</th>
                         <th>Prezzo attuale</th>
-                        <th>Leverage medio</th>
-                        <th>Take Profit medio</th>
-                        <th>Stop Loss medio</th>
                         <th>P/L totale</th>
                         <th>P/L %</th>
                         <th>Ultima apertura</th>
@@ -92,9 +89,6 @@ else
                             <td>@row.TotalUnits.ToString("N2")</td>
                             <td>@row.AverageOpenRate.ToString("N2")</td>
                             <td>@row.CurrentRate.ToString("N2")</td>
-                            <td>@row.AverageLeverage.ToString("N2")</td>
-                            <td>@row.AverageTakeProfitRate.ToString("N2")</td>
-                            <td>@row.AverageStopLossRate.ToString("N2")</td>
                             <td class="@(row.TotalPnL >= 0 ? "text-success" : "text-danger")">
                                 @row.TotalPnL.ToString("N2")
                             </td>
@@ -111,7 +105,7 @@ else
                             var details = GetDetailsForInstrument(row.InstrumentId);
 
                             <tr>
-                                <td colspan="14" class="bg-light">
+                                <td colspan="11" class="bg-light">
                                     <div class="p-2">
                                         <div class="fw-semibold mb-2">
                                             Dettaglio posizioni - @row.Symbol (@details.Count)
