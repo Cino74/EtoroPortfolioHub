@@ -26,23 +26,47 @@
 }
 else
 {
+    var filteredRows = GetFilteredRows();
+
     <PortfolioSummaryCards Snapshot="_snapshot"
-                           TitlesCount="_groupedRows.Count"
-                           TotalInvested="_groupedRows.Sum(x => x.TotalInvested)" />
+                           TitlesCount="filteredRows.Count"
+                           TotalInvested="filteredRows.Sum(x => x.TotalInvested)" />
 
     <div class="card shadow-sm mb-3">
         <div class="card-body">
-            <div>
-                <strong>Ultimo aggiornamento locale:</strong>
-                @_snapshot.LastUpdated.LocalDateTime.ToString("dd/MM/yyyy HH:mm:ss")
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+                <div>
+                    <strong>Ultimo aggiornamento locale:</strong>
+                    @_snapshot.LastUpdated.LocalDateTime.ToString("dd/MM/yyyy HH:mm:ss")
+                </div>
+
+                <div class="btn-group" role="group" aria-label="Filtro categoria">
+                    <button type="button"
+                            class="btn @(IsSelectedCategory("TUTTI") ? "btn-primary" : "btn-outline-primary")"
+                            @onclick='() => SetCategoryFilter("TUTTI")'>
+                        TUTTI
+                    </button>
+
+                    <button type="button"
+                            class="btn @(IsSelectedCategory("ETF") ? "btn-primary" : "btn-outline-primary")"
+                            @onclick='() => SetCategoryFilter("ETF")'>
+                        ETF
+                    </button>
+
+                    <button type="button"
+                            class="btn @(IsSelectedCategory("AZIONI") ? "btn-primary" : "btn-outline-primary")"
+                            @onclick='() => SetCategoryFilter("AZIONI")'>
+                        AZIONI
+                    </button>
+                </div>
             </div>
         </div>
     </div>
 
-    @if (_groupedRows.Count == 0)
+    @if (filteredRows.Count == 0)
     {
         <div class="alert alert-warning">
-            Nessuna posizione disponibile.
+            Nessun titolo disponibile per il filtro selezionato.
         </div>
     }
     else
@@ -53,6 +77,7 @@ else
                     <tr>
                         <th style="width: 50px;"></th>
                         <th>Titolo</th>
+                        <th>Categoria</th>
                         <th>Direzione</th>
                         <th>Posizioni</th>
                         <th>Totale investito</th>
@@ -65,14 +90,13 @@ else
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var row in _groupedRows)
+                    @foreach (var row in filteredRows)
                     {
                         <tr class="@(IsExpanded(row.InstrumentId) ? "table-active" : "")">
                             <td>
                                 <button type="button"
                                         class="btn btn-sm btn-outline-secondary"
-                                        title="Espandi / comprimi"
-                                        @onclick="() => ToggleRow(row.InstrumentId)">
+                                        @onclick='() => ToggleRow(row.InstrumentId)'>
                                     @(IsExpanded(row.InstrumentId) ? "−" : "+")
                                 </button>
                             </td>
@@ -83,90 +107,22 @@ else
                                 <div class="text-muted small">ID: @row.InstrumentId</div>
                             </td>
 
+                            <td>
+                                <span class="badge @(row.Category.Contains("ETF", StringComparison.OrdinalIgnoreCase) ? "text-bg-info" : "text-bg-secondary")">
+                                    @row.Category
+                                </span>
+                            </td>
+
                             <td>@row.Direction</td>
                             <td>@row.PositionsCount</td>
                             <td>@row.TotalInvested.ToString("N2")</td>
                             <td>@row.TotalUnits.ToString("N2")</td>
                             <td>@row.AverageOpenRate.ToString("N2")</td>
                             <td>@row.CurrentRate.ToString("N2")</td>
-                            <td class="@(row.TotalPnL >= 0 ? "text-success" : "text-danger")">
-                                @row.TotalPnL.ToString("N2")
-                            </td>
-                            <td class="@(row.ProfitPercent >= 0 ? "text-success" : "text-danger")">
-                                @row.ProfitPercent.ToString("N2") %
-                            </td>
-                            <td>
-                                @(row.LastTimestamp?.LocalDateTime.ToString("dd/MM/yyyy HH:mm:ss") ?? "-")
-                            </td>
+                            <td class="@(row.TotalPnL >= 0 ? "text-success" : "text-danger")">@row.TotalPnL.ToString("N2")</td>
+                            <td class="@(row.ProfitPercent >= 0 ? "text-success" : "text-danger")">@row.ProfitPercent.ToString("N2") %</td>
+                            <td>@(row.LastTimestamp?.LocalDateTime.ToString("dd/MM/yyyy HH:mm:ss") ?? "-")</td>
                         </tr>
-
-                        @if (IsExpanded(row.InstrumentId))
-                        {
-                            var details = GetDetailsForInstrument(row.InstrumentId);
-
-                            <tr>
-                                <td colspan="11" class="bg-light">
-                                    <div class="p-2">
-                                        <div class="fw-semibold mb-2">
-                                            Dettaglio posizioni - @row.Symbol (@details.Count)
-                                        </div>
-
-                                        @if (details.Count == 0)
-                                        {
-                                            <div class="text-muted">Nessun dettaglio disponibile.</div>
-                                        }
-                                        else
-                                        {
-                                            <div class="table-responsive">
-                                                <table class="table table-sm table-bordered align-middle mb-0">
-                                                    <thead class="table-light">
-                                                        <tr>
-                                                            <th>Position ID</th>
-                                                            <th>Direzione</th>
-                                                            <th>Investito</th>
-                                                            <th>Units</th>
-                                                            <th>Open Rate</th>
-                                                            <th>Prezzo attuale</th>
-                                                            <th>Leverage</th>
-                                                            <th>Take Profit</th>
-                                                            <th>Stop Loss</th>
-                                                            <th>P/L</th>
-                                                            <th>P/L %</th>
-                                                            <th>Timestamp</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        @foreach (var position in details)
-                                                        {
-                                                            <tr>
-                                                                <td>@position.PositionId</td>
-                                                                <td>@(position.IsBuy ? "LONG" : "SHORT")</td>
-                                                                <td>@position.InvestedAmount.ToString("N2")</td>
-                                                                <td>@position.Units.ToString("N2")</td>
-                                                                <td>@position.OpenRate.ToString("N2")</td>
-                                                                <td>@position.CurrentRate.ToString("N2")</td>
-                                                                <td>@position.Leverage.ToString("N2")</td>
-                                                                <td>@position.TakeProfitRate.ToString("N2")</td>
-                                                                <td>@position.StopLossRate.ToString("N2")</td>
-                                                                <td class="@(position.NetProfit >= 0 ? "text-success" : "text-danger")">
-                                                                    @position.NetProfit.ToString("N2")
-                                                                </td>
-                                                                <td class="@(position.ProfitPercent >= 0 ? "text-success" : "text-danger")">
-                                                                    @position.ProfitPercent.ToString("N2") %
-                                                                </td>
-                                                                <td>
-                                                                    @(position.Timestamp?.LocalDateTime.ToString("dd/MM/yyyy HH:mm:ss") ?? "-")
-                                                                </td>
-                                                            </tr>
-                                                        }
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        }
-                                    </div>
-                                </td>
-                            </tr>
-                        }
                     }
                 </tbody>
             </table>
@@ -183,6 +139,8 @@ else
     private PeriodicTimer? _timer;
     private CancellationTokenSource? _cts;
     private int _refreshIntervalSeconds;
+
+    private string _selectedCategory = "TUTTI";
 
     protected override async Task OnInitializedAsync()
     {
@@ -208,7 +166,6 @@ else
         }
         catch (OperationCanceledException)
         {
-            // chiusura normale del componente
         }
     }
 
@@ -216,45 +173,56 @@ else
     {
         _snapshot = PortfolioState.GetSnapshot();
         _groupedRows = BuildGroupedRows(_snapshot);
+        return Task.CompletedTask;
+    }
 
-        var validIds = _groupedRows.Select(x => x.InstrumentId).ToHashSet();
-        var keysToRemove = _expandedRows.Keys.Where(id => !validIds.Contains(id)).ToList();
+    private void SetCategoryFilter(string category)
+    {
+        _selectedCategory = category;
+    }
 
-        foreach (var key in keysToRemove)
+    private bool IsSelectedCategory(string category)
+    {
+        return string.Equals(_selectedCategory, category, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private List<PortfolioGroupedRowDto> GetFilteredRows()
+    {
+        if (string.Equals(_selectedCategory, "TUTTI", StringComparison.OrdinalIgnoreCase))
+            return _groupedRows.OrderBy(x => x.Symbol).ToList();
+
+        if (string.Equals(_selectedCategory, "ETF", StringComparison.OrdinalIgnoreCase))
         {
-            _expandedRows.Remove(key);
+            return _groupedRows
+                .Where(x => x.Category.Contains("ETF", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(x => x.Symbol)
+                .ToList();
         }
 
-        return Task.CompletedTask;
+        if (string.Equals(_selectedCategory, "AZIONI", StringComparison.OrdinalIgnoreCase))
+        {
+            return _groupedRows
+                .Where(x =>
+                    x.Category.Contains("STOCK", StringComparison.OrdinalIgnoreCase) ||
+                    x.Category.Contains("STOCKS", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(x => x.Symbol)
+                .ToList();
+        }
+
+        return _groupedRows.OrderBy(x => x.Symbol).ToList();
     }
 
     private void ToggleRow(int instrumentId)
     {
         if (_expandedRows.ContainsKey(instrumentId))
-        {
             _expandedRows[instrumentId] = !_expandedRows[instrumentId];
-        }
         else
-        {
             _expandedRows[instrumentId] = true;
-        }
     }
 
     private bool IsExpanded(int instrumentId)
     {
         return _expandedRows.TryGetValue(instrumentId, out var expanded) && expanded;
-    }
-
-    private List<PositionDto> GetDetailsForInstrument(int instrumentId)
-    {
-        if (_snapshot is null)
-            return new List<PositionDto>();
-
-        return _snapshot.Positions
-            .Where(p => p.InstrumentId == instrumentId)
-            .OrderByDescending(p => p.Timestamp)
-            .ThenByDescending(p => p.PositionId)
-            .ToList();
     }
 
     private static List<PortfolioGroupedRowDto> BuildGroupedRows(PortfolioSnapshot snapshot)
@@ -271,38 +239,27 @@ else
                     ? 0
                     : group.Sum(x => x.OpenRate * x.InvestedAmount) / totalInvested;
 
-                var weightedLeverage = totalInvested == 0
-                    ? 0
-                    : group.Sum(x => x.Leverage * x.InvestedAmount) / totalInvested;
-
-                var weightedTakeProfit = totalInvested == 0
-                    ? 0
-                    : group.Sum(x => x.TakeProfitRate * x.InvestedAmount) / totalInvested;
-
-                var weightedStopLoss = totalInvested == 0
-                    ? 0
-                    : group.Sum(x => x.StopLossRate * x.InvestedAmount) / totalInvested;
-
                 var directions = group.Select(x => x.IsBuy ? "LONG" : "SHORT").Distinct().ToList();
                 var direction = directions.Count == 1 ? directions[0] : "MIXED";
+
+                var symbol = group.Select(x => x.Symbol).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? group.Key.ToString();
+                var instrumentName = group.Select(x => x.InstrumentName).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? $"Strumento {group.Key}";
+                var instrumentTypeId = group.Select(x => x.InstrumentTypeId).FirstOrDefault(x => x > 0);
+                var instrumentTypeDescription = group.Select(x => x.InstrumentTypeDescription).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? "N/D";
 
                 return new PortfolioGroupedRowDto
                 {
                     InstrumentId = group.Key,
-                    Symbol = group.Select(x => x.Symbol).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? group.Key.ToString(),
-                    InstrumentName = group.Select(x => x.InstrumentName).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? $"Strumento {group.Key}",
+                    Symbol = symbol,
+                    InstrumentName = instrumentName,
+                    Category = instrumentTypeDescription.ToUpperInvariant(),
+                    InstrumentTypeId = instrumentTypeId,
                     Direction = direction,
                     PositionsCount = group.Count(),
                     TotalInvested = totalInvested,
                     TotalUnits = totalUnits,
                     AverageOpenRate = Math.Round(weightedOpenRate, 2),
-                    CurrentRate = Math.Round(
-                        group.Where(x => x.CurrentRate != 0m)
-                             .Select(x => x.CurrentRate)
-                             .LastOrDefault(), 2),
-                    AverageLeverage = Math.Round(weightedLeverage, 2),
-                    AverageTakeProfitRate = Math.Round(weightedTakeProfit, 2),
-                    AverageStopLossRate = Math.Round(weightedStopLoss, 2),
+                    CurrentRate = Math.Round(group.Where(x => x.CurrentRate != 0m).Select(x => x.CurrentRate).LastOrDefault(), 2),
                     TotalPnL = Math.Round(totalPnL, 2),
                     ProfitPercent = totalInvested == 0 ? 0 : Math.Round(totalPnL / totalInvested * 100m, 2),
                     LastTimestamp = group.Max(x => x.Timestamp)
@@ -317,7 +274,6 @@ else
         _cts?.Cancel();
         _cts?.Dispose();
         _timer?.Dispose();
-
         return ValueTask.CompletedTask;
     }
 }

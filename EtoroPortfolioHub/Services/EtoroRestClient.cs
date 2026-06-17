@@ -53,7 +53,7 @@ public sealed class EtoroRestClient
             .Distinct()
             .ToList();
 
-        // 1) Enrichment nomi/simboli
+        // 1) Enrichment con nome, simbolo e tipo ufficiale eToro
         var metadata = await GetInstrumentMetadataAsync(instrumentIds, cancellationToken);
 
         foreach (var position in snapshot.Positions)
@@ -65,6 +65,9 @@ public sealed class EtoroRestClient
 
                 if (string.IsNullOrWhiteSpace(position.Symbol))
                     position.Symbol = info.SymbolFull;
+
+                position.InstrumentTypeId = info.InstrumentTypeId;
+                position.InstrumentTypeDescription = info.InstrumentTypeDescription;
             }
 
             if (string.IsNullOrWhiteSpace(position.InstrumentName))
@@ -74,19 +77,23 @@ public sealed class EtoroRestClient
                 position.Symbol = position.InstrumentId.ToString();
         }
 
-        // 2) Enrichment prezzi correnti
+        // 2) Enrichment con prezzi correnti
         var rates = await GetInstrumentRatesAsync(instrumentIds, cancellationToken);
 
         foreach (var position in snapshot.Positions)
         {
             if (rates.TryGetValue(position.InstrumentId, out var rate))
             {
-                // Per ora usiamo lastExecution come prezzo attuale
+                position.Bid = rate.Bid;
+                position.Ask = rate.Ask;
+                position.LastExecution = rate.LastExecution;
+                position.ConversionRateBid = rate.ConversionRateBid;
+                position.ConversionRateAsk = rate.ConversionRateAsk;
+
                 position.CurrentRate = rate.LastExecution != 0m
                     ? rate.LastExecution
                     : (rate.Bid != 0m ? rate.Bid : rate.Ask);
 
-                // Se non hai timestamp posizione, puoi usare quello del rate
                 if (position.Timestamp is null)
                     position.Timestamp = rate.Date;
             }
@@ -95,9 +102,137 @@ public sealed class EtoroRestClient
         return snapshot;
     }
 
+    private string BuildPortfolioUrl()
+    {
+        const string root = "https://public-api.etoro.com";
+
+        return _options.Environment.Equals("Demo", StringComparison.OrdinalIgnoreCase)
+            ? $"{root}/api/v1/trading/info/demo/pnl"
+            : $"{root}/api/v1/trading/info/real/pnl";
+    }
+
+    private async Task<Dictionary<int, string>> GetInstrumentTypeDescriptionsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var url = "https://public-api.etoro.com/api/v1/market-data/instrument-types";
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Add("x-api-key", _options.ApiKey);
+        request.Headers.Add("x-user-key", _options.UserKey);
+        request.Headers.Add("x-request-id", Guid.NewGuid().ToString());
+
+        _logger.LogInformation("Chiamata instrument types verso URL: {Url}", url);
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var raw = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "Errore instrument types. Status: {StatusCode}. URL: {Url}. Body: {Body}",
+                response.StatusCode,
+                url,
+                raw);
+
+            return new Dictionary<int, string>();
+        }
+
+        using var document = JsonDocument.Parse(raw);
+        var root = document.RootElement;
+
+        var result = new Dictionary<int, string>();
+
+        if (root.TryGetProperty("instrumentTypes", out var items) &&
+            items.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in items.EnumerateArray())
+            {
+                var id = GetInt32(item, "instrumentTypeID", "instrumentTypeId");
+                var description = GetString(item, "instrumentTypeDescription");
+
+                if (id > 0 && !string.IsNullOrWhiteSpace(description))
+                {
+                    result[id] = description;
+                }
+            }
+        }
+
+        return result;
+    }
+
+    private async Task<Dictionary<int, InstrumentMetadataDto>> GetInstrumentMetadataAsync(
+        IEnumerable<int> instrumentIds,
+        CancellationToken cancellationToken = default)
+    {
+        var ids = instrumentIds
+            .Where(id => id > 0)
+            .Distinct()
+            .ToList();
+
+        if (ids.Count == 0)
+            return new Dictionary<int, InstrumentMetadataDto>();
+
+        var typeDescriptions = await GetInstrumentTypeDescriptionsAsync(cancellationToken);
+
+        var url =
+            $"https://public-api.etoro.com/api/v1/market-data/instruments?instrumentIds={string.Join(",", ids)}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Add("x-api-key", _options.ApiKey);
+        request.Headers.Add("x-user-key", _options.UserKey);
+        request.Headers.Add("x-request-id", Guid.NewGuid().ToString());
+
+        _logger.LogInformation("Chiamata metadata strumenti verso URL: {Url}", url);
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var raw = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "Errore metadata strumenti. Status: {StatusCode}. URL: {Url}. Body: {Body}",
+                response.StatusCode,
+                url,
+                raw);
+
+            return new Dictionary<int, InstrumentMetadataDto>();
+        }
+
+        using var document = JsonDocument.Parse(raw);
+        var root = document.RootElement;
+
+        var result = new Dictionary<int, InstrumentMetadataDto>();
+
+        if (root.TryGetProperty("instrumentDisplayDatas", out var items) &&
+            items.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in items.EnumerateArray())
+            {
+                var instrumentId = GetInt32(item, "instrumentID", "instrumentId");
+                if (instrumentId == 0)
+                    continue;
+
+                var instrumentTypeId = GetInt32(item, "instrumentTypeID", "instrumentTypeId");
+
+                result[instrumentId] = new InstrumentMetadataDto
+                {
+                    InstrumentId = instrumentId,
+                    InstrumentDisplayName = GetString(item, "instrumentDisplayName"),
+                    SymbolFull = GetString(item, "symbolFull"),
+                    InstrumentTypeId = instrumentTypeId,
+                    InstrumentTypeDescription = typeDescriptions.TryGetValue(instrumentTypeId, out var description)
+                        ? description
+                        : string.Empty
+                };
+            }
+        }
+
+        return result;
+    }
+
     private async Task<Dictionary<int, InstrumentRateDto>> GetInstrumentRatesAsync(
-    IEnumerable<int> instrumentIds,
-    CancellationToken cancellationToken = default)
+        IEnumerable<int> instrumentIds,
+        CancellationToken cancellationToken = default)
     {
         var ids = instrumentIds
             .Where(id => id > 0)
@@ -151,79 +286,9 @@ public sealed class EtoroRestClient
                     Ask = GetDecimal(item, "ask"),
                     Bid = GetDecimal(item, "bid"),
                     LastExecution = GetDecimal(item, "lastExecution"),
+                    ConversionRateAsk = GetDecimal(item, "conversionRateAsk"),
+                    ConversionRateBid = GetDecimal(item, "conversionRateBid"),
                     Date = GetDateTimeOffset(item, "date")
-                };
-            }
-        }
-
-        return result;
-    }
-
-
-    private string BuildPortfolioUrl()
-    {
-        const string root = "https://public-api.etoro.com";
-
-        return _options.Environment.Equals("Demo", StringComparison.OrdinalIgnoreCase)
-            ? $"{root}/api/v1/trading/info/demo/pnl"
-            : $"{root}/api/v1/trading/info/real/pnl";
-    }
-
-    private async Task<Dictionary<int, InstrumentMetadataDto>> GetInstrumentMetadataAsync(
-        IEnumerable<int> instrumentIds,
-        CancellationToken cancellationToken = default)
-    {
-        var ids = instrumentIds
-            .Where(id => id > 0)
-            .Distinct()
-            .ToList();
-
-        if (ids.Count == 0)
-            return new Dictionary<int, InstrumentMetadataDto>();
-
-        var url =
-            $"https://public-api.etoro.com/api/v1/market-data/instruments?instrumentIds={string.Join(",", ids)}";
-
-        using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.Add("x-api-key", _options.ApiKey);
-        request.Headers.Add("x-user-key", _options.UserKey);
-        request.Headers.Add("x-request-id", Guid.NewGuid().ToString());
-
-        _logger.LogInformation("Chiamata metadata strumenti verso URL: {Url}", url);
-
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
-        var raw = await response.Content.ReadAsStringAsync(cancellationToken);
-
-        if (!response.IsSuccessStatusCode)
-        {
-            _logger.LogWarning(
-                "Errore metadata strumenti. Status: {StatusCode}. URL: {Url}. Body: {Body}",
-                response.StatusCode,
-                url,
-                raw);
-
-            return new Dictionary<int, InstrumentMetadataDto>();
-        }
-
-        using var document = JsonDocument.Parse(raw);
-        var root = document.RootElement;
-
-        var result = new Dictionary<int, InstrumentMetadataDto>();
-
-        if (root.TryGetProperty("instrumentDisplayDatas", out var items) &&
-            items.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var item in items.EnumerateArray())
-            {
-                var instrumentId = GetInt32(item, "instrumentID", "instrumentId");
-                if (instrumentId == 0)
-                    continue;
-
-                result[instrumentId] = new InstrumentMetadataDto
-                {
-                    InstrumentId = instrumentId,
-                    InstrumentDisplayName = GetString(item, "instrumentDisplayName"),
-                    SymbolFull = GetString(item, "symbolFull")
                 };
             }
         }
@@ -251,18 +316,18 @@ public sealed class EtoroRestClient
             hasClientPortfolio = true;
         }
 
-        // ---------------------------
-        // 1) Leggo i balance values in entrambi gli schemi possibili
-        // ---------------------------
-
-        // Schema A: API Reference -> clientPortfolio.credit / clientPortfolio.unrealizedPnL
-        if (hasClientPortfolio)
+        if (!hasClientPortfolio && root.ValueKind == JsonValueKind.Object)
         {
-            snapshot.Credit = GetDecimal(portfolioElement, "credit");
-            snapshot.UnrealizedPnL = GetDecimal(portfolioElement, "unrealizedPnL");
+            portfolioElement = root;
+            hasClientPortfolio = true;
         }
 
-        // Schema B: Builders guide -> root.availableBalance / root.totalBalance / root.equity
+        if (!hasClientPortfolio)
+            return snapshot;
+
+        snapshot.Credit = GetDecimal(portfolioElement, "credit");
+        snapshot.UnrealizedPnL = GetDecimal(portfolioElement, "unrealizedPnL");
+
         var rootAvailableBalance = GetDecimal(root, "availableBalance");
         var rootTotalBalance = GetDecimal(root, "totalBalance");
         var rootEquity = GetDecimal(root, "equity");
@@ -271,9 +336,6 @@ public sealed class EtoroRestClient
         if (snapshot.UnrealizedPnL == 0m && rootUnrealizedPnL != 0m)
             snapshot.UnrealizedPnL = rootUnrealizedPnL;
 
-        // ---------------------------
-        // 2) Posizioni
-        // ---------------------------
         var directPositionProfitLoss = 0m;
         JsonElement positionsElement = default;
         var foundPositions = false;
@@ -296,7 +358,6 @@ public sealed class EtoroRestClient
         {
             foreach (var item in positionsElement.EnumerateArray())
             {
-                // Preferisci unrealizedPnL.pnL; fallback su pnL/netProfit
                 var positionProfit = GetNestedDecimal(item, "unrealizedPnL", "pnL");
                 if (positionProfit == 0m)
                     positionProfit = GetDecimal(item, "pnL", "netProfit");
@@ -318,6 +379,9 @@ public sealed class EtoroRestClient
                     Leverage = GetDecimal(item, "leverage"),
                     TakeProfitRate = GetDecimal(item, "takeProfitRate"),
                     StopLossRate = GetDecimal(item, "stopLossRate"),
+
+                    OpenConversionRate = GetDecimal(item, "openConversionRate"),
+
                     Timestamp = GetDateTimeOffset(item, "timestamp", "openDateTime")
                 };
 
@@ -326,11 +390,6 @@ public sealed class EtoroRestClient
             }
         }
 
-        // ---------------------------
-        // 3) Saldo disponibile
-        // ---------------------------
-        // Se abbiamo availableBalance dal root (schema Builders), usiamo quello.
-        // Altrimenti applichiamo la formula Available Cash = credit - pending orders.
         if (rootAvailableBalance != 0m)
         {
             snapshot.AvailableCash = rootAvailableBalance;
@@ -366,12 +425,6 @@ public sealed class EtoroRestClient
             snapshot.AvailableCash = snapshot.Credit - pendingOrdersAmount;
         }
 
-        // ---------------------------
-        // 4) Profit/Loss
-        // ---------------------------
-        // Se abbiamo unrealizedPnL raw, usiamo quello.
-        // Altrimenti, se abbiamo totalBalance + equity, usiamo equity - totalBalance.
-        // In ultima istanza, calcoliamo dalla somma delle posizioni e mirrors.
         if (snapshot.UnrealizedPnL != 0m)
         {
             snapshot.ProfitLoss = snapshot.UnrealizedPnL;

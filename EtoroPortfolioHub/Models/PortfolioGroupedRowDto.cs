@@ -6,6 +6,9 @@ public sealed class PortfolioGroupedRowDto
     public string Symbol { get; set; } = string.Empty;
     public string InstrumentName { get; set; } = string.Empty;
 
+    public string Category { get; set; } = string.Empty;
+    public int InstrumentTypeId { get; set; }
+
     public string Direction { get; set; } = string.Empty;
 
     public decimal TotalInvested { get; set; }

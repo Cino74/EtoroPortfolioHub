@@ -28,9 +28,13 @@ public sealed class PositionDto
     public decimal ConversionRateBid { get; set; }
     public decimal ConversionRateAsk { get; set; }
 
+    public int InstrumentTypeId { get; set; }
+    public string InstrumentTypeDescription { get; set; } = string.Empty;
 
     public DateTimeOffset? Timestamp { get; set; }
 
     public decimal ProfitPercent =>
-        InvestedAmount == 0 ? 0 : Math.Round((NetProfit / InvestedAmount) * 100m, 2);
+        InvestedAmount == 0
+            ? 0
+            : Math.Round((NetProfit / InvestedAmount) * 100m, 2);
 }
