@@ -20,6 +20,15 @@ public sealed class PositionDto
     public decimal TakeProfitRate { get; set; }
     public decimal StopLossRate { get; set; }
 
+    public decimal Bid { get; set; }
+    public decimal Ask { get; set; }
+    public decimal LastExecution { get; set; }
+
+    public decimal OpenConversionRate { get; set; }
+    public decimal ConversionRateBid { get; set; }
+    public decimal ConversionRateAsk { get; set; }
+
+
     public DateTimeOffset? Timestamp { get; set; }
 
     public decimal ProfitPercent =>

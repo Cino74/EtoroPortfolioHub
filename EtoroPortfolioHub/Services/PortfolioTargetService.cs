@@ -25,6 +25,7 @@ public sealed class PortfolioTargetService
                 return new Dictionary<int, PortfolioTargetItem>();
 
             var json = await File.ReadAllTextAsync(_filePath);
+
             if (string.IsNullOrWhiteSpace(json))
                 return new Dictionary<int, PortfolioTargetItem>();
 
@@ -65,5 +66,98 @@ public sealed class PortfolioTargetService
     {
         var all = await GetAllAsync();
         return all.TryGetValue(instrumentId, out var item) ? item : null;
+    }
+
+    public async Task SaveOrUpdateAsync(PortfolioTargetItem item)
+    {
+        await _lock.WaitAsync();
+        try
+        {
+            List<PortfolioTargetItem> items;
+
+            if (File.Exists(_filePath))
+            {
+                var json = await File.ReadAllTextAsync(_filePath);
+                items = JsonSerializer.Deserialize<List<PortfolioTargetItem>>(json)
+                        ?? new List<PortfolioTargetItem>();
+            }
+            else
+            {
+                items = new List<PortfolioTargetItem>();
+            }
+
+            var existing = items.FirstOrDefault(x => x.InstrumentId == item.InstrumentId);
+
+            if (existing is null)
+            {
+                items.Add(item);
+            }
+            else
+            {
+                existing.Symbol = item.Symbol;
+                existing.InstrumentName = item.InstrumentName;
+                existing.TargetPercentage = item.TargetPercentage;
+            }
+
+            var updatedJson = JsonSerializer.Serialize(
+                items.OrderBy(x => x.Symbol).ToList(),
+                new JsonSerializerOptions
+                {
+                    WriteIndented = true
+                });
+
+            await File.WriteAllTextAsync(_filePath, updatedJson);
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    public async Task DeleteAsync(int instrumentId)
+    {
+        await _lock.WaitAsync();
+        try
+        {
+            if (!File.Exists(_filePath))
+                return;
+
+            var json = await File.ReadAllTextAsync(_filePath);
+
+            var items = JsonSerializer.Deserialize<List<PortfolioTargetItem>>(json)
+                        ?? new List<PortfolioTargetItem>();
+
+            items = items
+                .Where(x => x.InstrumentId != instrumentId)
+                .OrderBy(x => x.Symbol)
+                .ToList();
+
+            var updatedJson = JsonSerializer.Serialize(items, new JsonSerializerOptions
+            {
+                WriteIndented = true
+            });
+
+            await File.WriteAllTextAsync(_filePath, updatedJson);
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    public async Task ClearAsync()
+    {
+        await _lock.WaitAsync();
+        try
+        {
+            if (File.Exists(_filePath))
+            {
+                await File.WriteAllTextAsync(_filePath, "[]");
+            }
+        }
+        finally
+        {
+            _lock.Release();
+        }
     }
 }

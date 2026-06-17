@@ -1,10 +1,10 @@
 ﻿@page "/portfolio"
 @using EtoroPortfolioHub.Models
 @using EtoroPortfolioHub.State
+@using EtoroPortfolioHub.Components.Shared
 @using Microsoft.Extensions.Options
 @inject PortfolioState PortfolioState
 @inject IOptionsMonitor<EtoroOptions> EtoroOptionsMonitor
-@using EtoroPortfolioHub.Components.Shared
 
 @implements IAsyncDisposable
 
@@ -59,9 +59,9 @@ else
                         <th>Totale units</th>
                         <th>Prezzo medio</th>
                         <th>Prezzo attuale</th>
-     @*                    <th>Leverage medio</th> *@
-@*                         <th>Take Profit medio</th>
-                        <th>Stop Loss medio</th> *@
+                        <th>Leverage medio</th>
+                        <th>Take Profit medio</th>
+                        <th>Stop Loss medio</th>
                         <th>P/L totale</th>
                         <th>P/L %</th>
                         <th>Ultima apertura</th>
@@ -92,9 +92,9 @@ else
                             <td>@row.TotalUnits.ToString("N2")</td>
                             <td>@row.AverageOpenRate.ToString("N2")</td>
                             <td>@row.CurrentRate.ToString("N2")</td>
- @*                            <td>@row.AverageLeverage.ToString("N2")</td> *@
-@*                             <td>@row.AverageTakeProfitRate.ToString("N2")</td>
-                            <td>@row.AverageStopLossRate.ToString("N2")</td> *@
+                            <td>@row.AverageLeverage.ToString("N2")</td>
+                            <td>@row.AverageTakeProfitRate.ToString("N2")</td>
+                            <td>@row.AverageStopLossRate.ToString("N2")</td>
                             <td class="@(row.TotalPnL >= 0 ? "text-success" : "text-danger")">
                                 @row.TotalPnL.ToString("N2")
                             </td>
@@ -127,25 +127,25 @@ else
                                                 <table class="table table-sm table-bordered align-middle mb-0">
                                                     <thead class="table-light">
                                                         <tr>
-                                                            @* <th>Position ID</th> *@
+                                                            <th>Position ID</th>
                                                             <th>Direzione</th>
                                                             <th>Investito</th>
-                                                            <th>Unità</th>
-                                                            <th>Prezzo apertura</th>
+                                                            <th>Units</th>
+                                                            <th>Open Rate</th>
                                                             <th>Prezzo attuale</th>
-                                                            <th>Leva</th>
-                                                            <th>TP</th>
-                                                            <th>SL</th>
+                                                            <th>Leverage</th>
+                                                            <th>Take Profit</th>
+                                                            <th>Stop Loss</th>
                                                             <th>P/L</th>
                                                             <th>P/L %</th>
-                                                            <th>Apertura</th>
+                                                            <th>Timestamp</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody>
                                                         @foreach (var position in details)
                                                         {
                                                             <tr>
-                                                                @* <td>@position.PositionId</td> *@
+                                                                <td>@position.PositionId</td>
                                                                 <td>@(position.IsBuy ? "LONG" : "SHORT")</td>
                                                                 <td>@position.InvestedAmount.ToString("N2")</td>
                                                                 <td>@position.Units.ToString("N2")</td>
@@ -214,7 +214,7 @@ else
         }
         catch (OperationCanceledException)
         {
-            // chiusura componente
+            // chiusura normale del componente
         }
     }
 
@@ -223,7 +223,6 @@ else
         _snapshot = PortfolioState.GetSnapshot();
         _groupedRows = BuildGroupedRows(_snapshot);
 
-        // Mantieni solo le righe espanse ancora esistenti
         var validIds = _groupedRows.Select(x => x.InstrumentId).ToHashSet();
         var keysToRemove = _expandedRows.Keys.Where(id => !validIds.Contains(id)).ToList();
 
@@ -302,15 +301,15 @@ else
                     PositionsCount = group.Count(),
                     TotalInvested = totalInvested,
                     TotalUnits = totalUnits,
-                    AverageOpenRate = weightedOpenRate,
-                    CurrentRate = group
-                        .Where(x => x.CurrentRate != 0)
-                        .Select(x => x.CurrentRate)
-                        .LastOrDefault(),
-                    AverageLeverage = weightedLeverage,
-                    AverageTakeProfitRate = weightedTakeProfit,
-                    AverageStopLossRate = weightedStopLoss,
-                    TotalPnL = totalPnL,
+                    AverageOpenRate = Math.Round(weightedOpenRate, 2),
+                    CurrentRate = Math.Round(
+                        group.Where(x => x.CurrentRate != 0m)
+                             .Select(x => x.CurrentRate)
+                             .LastOrDefault(), 2),
+                    AverageLeverage = Math.Round(weightedLeverage, 2),
+                    AverageTakeProfitRate = Math.Round(weightedTakeProfit, 2),
+                    AverageStopLossRate = Math.Round(weightedStopLoss, 2),
+                    TotalPnL = Math.Round(totalPnL, 2),
                     ProfitPercent = totalInvested == 0 ? 0 : Math.Round(totalPnL / totalInvested * 100m, 2),
                     LastTimestamp = group.Max(x => x.Timestamp)
                 };

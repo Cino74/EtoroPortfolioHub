@@ -12,6 +12,12 @@
 
 <h3 class="mb-3">Dashboard</h3>
 
+<div class="mb-3">
+    <span class="badge text-bg-secondary">
+        Refresh ogni @_refreshIntervalSeconds secondi
+    </span>
+</div>
+
 @if (_snapshot is null)
 {
     <div class="alert alert-info">
@@ -20,12 +26,10 @@
 }
 else
 {
-    <!-- KPI in alto -->
     <PortfolioSummaryCards Snapshot="_snapshot"
                            TitlesCount="_titlesCount"
                            TotalInvested="_totalInvested" />
 
-    <!-- Blocco info aggiornamento -->
     <div class="card shadow-sm mb-4">
         <div class="card-body">
             <div>
@@ -108,7 +112,7 @@ else
         }
         catch (OperationCanceledException)
         {
-            // Chiusura normale del componente
+            // chiusura normale del componente
         }
     }
 

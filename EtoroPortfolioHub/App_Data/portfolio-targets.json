@@ -1,11 +1,5 @@
 [
   {
-    "InstrumentId": 1237,
-    "Symbol": "BN.PA",
-    "InstrumentName": "Danone S.A",
-    "TargetPercentage": 1
-  },
-  {
     "InstrumentId": 1282,
     "Symbol": "ENEL.MI",
     "InstrumentName": "Enel Power Company",
@@ -46,12 +40,6 @@
     "Symbol": "ISP.MI",
     "InstrumentName": "Intesa Sanpaolo Group",
     "TargetPercentage": 4
-  },
-  {
-    "InstrumentId": 2877,
-    "Symbol": "JNJ.RTH",
-    "InstrumentName": "Johnson \u0026 Johnson",
-    "TargetPercentage": 2
   },
   {
     "InstrumentId": 2494,
@@ -105,7 +93,7 @@
     "InstrumentId": 3040,
     "Symbol": "SWDA.L",
     "InstrumentName": "iShares Core MSCI World UCITS ETF",
-    "TargetPercentage": 24
+    "TargetPercentage": 26
   },
   {
     "InstrumentId": 1246,
@@ -117,7 +105,7 @@
     "InstrumentId": 10560,
     "Symbol": "VGWD.DE",
     "InstrumentName": "Vanguard FTSE All World High Dividend Yield UCITS ETF",
-    "TargetPercentage": 11
+    "TargetPercentage": 12
   },
   {
     "InstrumentId": 10624,
