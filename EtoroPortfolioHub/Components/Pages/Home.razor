@@ -1,10 +1,13 @@
 ﻿@page "/"
 @using EtoroPortfolioHub.Models
 @using EtoroPortfolioHub.State
+@using EtoroPortfolioHub.Services
 @using EtoroPortfolioHub.Components.Shared
 @using Microsoft.Extensions.Options
 @inject PortfolioState PortfolioState
+@inject PortfolioTargetService PortfolioTargetService
 @inject IOptionsMonitor<EtoroOptions> EtoroOptionsMonitor
+@inject NavigationManager NavigationManager
 
 @implements IAsyncDisposable
 
@@ -26,15 +29,166 @@
 }
 else
 {
+    <!-- KPI principali -->
     <PortfolioSummaryCards Snapshot="_snapshot"
                            TitlesCount="_titlesCount"
                            TotalInvested="_totalInvested" />
 
+    <!-- Mini-card operative -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-6 col-lg-3">
+            <div class="card shadow-sm h-100 border-danger-subtle">
+                <div class="card-body">
+                    <div class="text-muted small">Totale da aggiungere</div>
+                    <div class="fs-4 fw-bold text-danger">
+                        @_totalToAdd.ToString("N2")
+                    </div>
+                    <div class="small text-muted mt-1">
+                        Capitale necessario per tutti i titoli sottopeso
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-lg-3">
+            <div class="card shadow-sm h-100 border-success-subtle">
+                <div class="card-body">
+                    <div class="text-muted small">Totale da ridurre</div>
+                    <div class="fs-4 fw-bold text-success">
+                        @_totalToReduce.ToString("N2")
+                    </div>
+                    <div class="small text-muted mt-1">
+                        Capitale eccedente su tutti i titoli sovrappeso
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pulsanti rapidi -->
+    <div class="d-flex flex-wrap justify-content-end gap-2 mb-3">
+        <button class="btn btn-outline-primary" @onclick="GoToTargets">
+            Vai ai target
+        </button>
+
+        <button class="btn btn-primary" @onclick="GoToPortfolio">
+            Vai al portafoglio
+        </button>
+    </div>
+
+    <!-- Ultimo aggiornamento -->
     <div class="card shadow-sm mb-4">
         <div class="card-body">
             <div>
                 <strong>Ultimo aggiornamento locale:</strong>
                 @_snapshot.LastUpdated.LocalDateTime.ToString("dd/MM/yyyy HH:mm:ss")
+            </div>
+        </div>
+    </div>
+
+    <!-- Sezioni operative -->
+    <div class="row g-4 mb-4">
+        <!-- Titoli sottopeso -->
+        <div class="col-xl-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="card-title mb-0">Titoli sottopeso</h5>
+                        <span class="badge text-bg-danger">
+                            Mostrati @_underweightRows.Count di @_allUnderweightCount
+                        </span>
+                    </div>
+
+                    @if (_underweightRows.Count == 0)
+                    {
+                        <div class="text-muted">
+                            Nessun titolo sottopeso.
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Titolo</th>
+                                        <th class="text-end">Attuale %</th>
+                                        <th class="text-end">Target %</th>
+                                        <th class="text-end">Delta %</th>
+                                        <th class="text-end">Da aggiungere $</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var row in _underweightRows)
+                                    {
+                                        <tr>
+                                            <td>
+                                                <div><strong>@row.Symbol</strong></div>
+                                                <div class="text-muted small">@row.InstrumentName</div>
+                                            </td>
+                                            <td class="text-end">@row.CurrentWeightPercentage.ToString("N2") %</td>
+                                            <td class="text-end">@row.TargetPercentage.ToString("N2") %</td>
+                                            <td class="text-end text-danger">@row.DeltaPercentage.ToString("N2") %</td>
+                                            <td class="text-end text-danger">@row.DeltaValue.ToString("N2")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Titoli sovrappeso -->
+        <div class="col-xl-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="card-title mb-0">Titoli sovrappeso</h5>
+                        <span class="badge text-bg-success">
+                            Mostrati @_overweightRows.Count di @_allOverweightCount
+                        </span>
+                    </div>
+
+                    @if (_overweightRows.Count == 0)
+                    {
+                        <div class="text-muted">
+                            Nessun titolo sovrappeso.
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Titolo</th>
+                                        <th class="text-end">Attuale %</th>
+                                        <th class="text-end">Target %</th>
+                                        <th class="text-end">Delta %</th>
+                                        <th class="text-end">Da ridurre $</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var row in _overweightRows)
+                                    {
+                                        <tr>
+                                            <td>
+                                                <div><strong>@row.Symbol</strong></div>
+                                                <div class="text-muted small">@row.InstrumentName</div>
+                                            </td>
+                                            <td class="text-end">@row.CurrentWeightPercentage.ToString("N2") %</td>
+                                            <td class="text-end">@row.TargetPercentage.ToString("N2") %</td>
+                                            <td class="text-end text-success">@row.DeltaPercentage.ToString("N2") %</td>
+                                            <td class="text-end text-success">@Math.Abs(row.DeltaValue).ToString("N2")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
             </div>
         </div>
     </div>
@@ -88,6 +242,15 @@ else
     private int _titlesCount;
     private decimal _totalInvested;
 
+    private decimal _totalToAdd;
+    private decimal _totalToReduce;
+
+    private int _allUnderweightCount;
+    private int _allOverweightCount;
+
+    private List<HomeRebalanceRowVm> _underweightRows = new();
+    private List<HomeRebalanceRowVm> _overweightRows = new();
+
     protected override async Task OnInitializedAsync()
     {
         _refreshIntervalSeconds = Math.Max(1, EtoroOptionsMonitor.CurrentValue.RefreshIntervalSeconds);
@@ -116,21 +279,97 @@ else
         }
     }
 
-    private Task LoadSnapshotAsync()
+    private async Task LoadSnapshotAsync()
     {
         _snapshot = PortfolioState.GetSnapshot();
 
-        if (_snapshot is not null)
+        if (_snapshot is null)
         {
-            _titlesCount = _snapshot.Positions
-                .Select(p => p.InstrumentId)
-                .Distinct()
-                .Count();
-
-            _totalInvested = _snapshot.Positions.Sum(p => p.InvestedAmount);
+            _titlesCount = 0;
+            _totalInvested = 0;
+            _totalToAdd = 0;
+            _totalToReduce = 0;
+            _allUnderweightCount = 0;
+            _allOverweightCount = 0;
+            _underweightRows = new();
+            _overweightRows = new();
+            return;
         }
 
-        return Task.CompletedTask;
+        _titlesCount = _snapshot.Positions
+            .Select(p => p.InstrumentId)
+            .Distinct()
+            .Count();
+
+        _totalInvested = _snapshot.Positions.Sum(p => p.InvestedAmount);
+
+        var savedTargets = await PortfolioTargetService.GetAllAsync();
+
+        var groupedTitles = _snapshot.Positions
+            .GroupBy(p => p.InstrumentId)
+            .Select(g =>
+            {
+                var investedForInstrument = g.Sum(x => x.InvestedAmount);
+
+                savedTargets.TryGetValue(g.Key, out var savedTarget);
+
+                var targetPercentage = savedTarget?.TargetPercentage ?? 0m;
+                var currentWeight = _totalInvested == 0m
+                    ? 0m
+                    : Math.Round(investedForInstrument / _totalInvested * 100m, 2);
+
+                return new HomeRebalanceRowVm
+                {
+                    InstrumentId = g.Key,
+                    Symbol = g.Select(x => x.Symbol).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? g.Key.ToString(),
+                    InstrumentName = g.Select(x => x.InstrumentName).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? $"Strumento {g.Key}",
+                    CurrentInvestedAmount = investedForInstrument,
+                    TotalPortfolioInvested = _totalInvested,
+                    CurrentWeightPercentage = currentWeight,
+                    TargetPercentage = targetPercentage
+                };
+            })
+            .Where(x => x.TargetPercentage > 0m)
+            .ToList();
+
+        // Liste complete per i totali
+        var allUnderweightRows = groupedTitles
+            .Where(x => x.DeltaValue > 0.01m)
+            .OrderByDescending(x => x.DeltaValue)
+            .ThenBy(x => x.Symbol)
+            .ToList();
+
+        var allOverweightRows = groupedTitles
+            .Where(x => x.DeltaValue < -0.01m)
+            .OrderBy(x => x.DeltaValue)
+            .ThenBy(x => x.Symbol)
+            .ToList();
+
+        // Totali sulle liste complete
+        _totalToAdd = Math.Round(allUnderweightRows.Sum(x => x.DeltaValue), 2);
+        _totalToReduce = Math.Round(allOverweightRows.Sum(x => Math.Abs(x.DeltaValue)), 2);
+
+        _allUnderweightCount = allUnderweightRows.Count;
+        _allOverweightCount = allOverweightRows.Count;
+
+        // Tabelle limitate ai primi 10
+        _underweightRows = allUnderweightRows
+            .Take(10)
+            .ToList();
+
+        _overweightRows = allOverweightRows
+            .Take(10)
+            .ToList();
+    }
+
+    private void GoToTargets()
+    {
+        NavigationManager.NavigateTo("/portfolio-targets");
+    }
+
+    private void GoToPortfolio()
+    {
+        NavigationManager.NavigateTo("/portfolio");
     }
 
     public ValueTask DisposeAsync()
@@ -140,5 +379,31 @@ else
         _timer?.Dispose();
 
         return ValueTask.CompletedTask;
+    }
+
+    private sealed class HomeRebalanceRowVm
+    {
+        public int InstrumentId { get; set; }
+        public string Symbol { get; set; } = string.Empty;
+        public string InstrumentName { get; set; } = string.Empty;
+
+        public decimal CurrentInvestedAmount { get; set; }
+        public decimal TotalPortfolioInvested { get; set; }
+
+        public decimal CurrentWeightPercentage { get; set; }
+        public decimal TargetPercentage { get; set; }
+
+        // Positivo = sei sopra il target
+        // Negativo = sei sotto il target
+        public decimal DeltaPercentage =>
+            Math.Round(CurrentWeightPercentage - TargetPercentage, 2);
+
+        public decimal TargetValue =>
+            Math.Round(TotalPortfolioInvested * TargetPercentage / 100m, 2);
+
+        // Positivo = da aggiungere
+        // Negativo = da ridurre
+        public decimal DeltaValue =>
+            Math.Round(TargetValue - CurrentInvestedAmount, 2);
     }
 }
