@@ -41,7 +41,7 @@ else
                 <div class="card-body">
                     <div class="text-muted small">Totale target impostato</div>
                     <div class="fs-4 fw-bold @(TotalTarget > 100 ? "text-danger" : "text-success")">
-                        @TotalTarget.ToString("N2") %
+                        @TotalTarget.ToString("N0") %
                     </div>
                 </div>
             </div>
@@ -119,7 +119,7 @@ else
                             <td style="max-width: 160px;">
                                 <InputNumber @bind-Value="row.TargetPercentage"
                                              class="form-control text-end"
-                                             TValue="decimal" />
+                                             TValue="int" />
                             </td>
 
                             <td class="text-end @(row.DeltaPercentage >= 0 ? "text-success" : "text-danger")">
@@ -192,7 +192,7 @@ else
                         CurrentWeightPercentage = _totalInvested == 0
                             ? 0
                             : Math.Round(totalInvestedForInstrument / _totalInvested * 100m, 2),
-                        TargetPercentage = 0m
+                        TargetPercentage = 0
                     };
                 })
                 .OrderBy(x => x.Symbol)
@@ -284,7 +284,7 @@ else
         public decimal TotalPortfolioInvested { get; set; }
 
         public decimal CurrentWeightPercentage { get; set; }
-        public decimal TargetPercentage { get; set; }
+        public int TargetPercentage { get; set; }
 
         // Differenza percentuale "come prima":
         // verde se >= 0, rosso se manca rispetto al target

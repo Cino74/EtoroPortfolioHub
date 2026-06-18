@@ -509,7 +509,7 @@ else
 
                 savedTargets.TryGetValue(g.Key, out var savedTarget);
 
-                var targetPercentage = savedTarget?.TargetPercentage ?? 0m;
+                var targetPercentage = savedTarget?.TargetPercentage ?? 0;
                 var currentWeight = _totalInvested == 0m
                     ? 0m
                     : Math.Round(investedForInstrument / _totalInvested * 100m, 2);
@@ -525,7 +525,7 @@ else
                     TargetPercentage = targetPercentage
                 };
             })
-            .Where(x => x.TargetPercentage > 0m)
+            .Where(x => x.TargetPercentage > 0)
             .ToList();
 
         var allUnderweightRows = rebalanceRows
@@ -585,7 +585,7 @@ else
         public decimal TotalPortfolioInvested { get; set; }
 
         public decimal CurrentWeightPercentage { get; set; }
-        public decimal TargetPercentage { get; set; }
+        public int TargetPercentage { get; set; }
 
         public decimal DeltaPercentage =>
             Math.Round(CurrentWeightPercentage - TargetPercentage, 2);

@@ -1,0 +1,220 @@
+﻿@page "/dividendi"
+@using EtoroPortfolioHub.Models
+@using EtoroPortfolioHub.Services
+@inject DividendCalendarService DividendCalendarService
+
+<PageTitle>Dividendi</PageTitle>
+
+<h3 class="mb-3">Dividendi</h3>
+
+@if (_isLoading)
+{
+    <div class="alert alert-info">
+        Caricamento dati dividendi...
+    </div>
+}
+else
+{
+    <!-- KPI -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-6 col-lg-3">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Entrate stimate questo mese</div>
+                    <div class="fs-4 fw-bold">@_thisMonthTotal.ToString("N2")</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-lg-3">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Entrate stimate prossimo mese</div>
+                    <div class="fs-4 fw-bold">@_nextMonthTotal.ToString("N2")</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-lg-3">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Entrate stimate annuali</div>
+                    <div class="fs-4 fw-bold">@_annualTotal.ToString("N2")</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-lg-3">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Prossimo pagamento in arrivo</div>
+                    <div class="fw-bold">
+                        @(_nextPaymentLabel ?? "-")
+                    </div>
+                    <div class="small text-muted mt-1">
+                        @(_nextPaymentAmount.HasValue ? _nextPaymentAmount.Value.ToString("N2") : "")
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Titoli a dividendo -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h5 class="card-title mb-3">Titoli che distribuiscono dividendi</h5>
+
+            @if (_items.Count == 0)
+            {
+                <div class="text-muted">
+                    Nessun titolo del portafoglio trovato nel Dividend Calendar.
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>Titolo</th>
+                                <th class="text-end">Units</th>
+                                <th class="text-end">Dividend. periodico</th>
+                                <th class="text-end">Dividend. annuale</th>
+                                <th>Ex-Date</th>
+                                <th>Payment Date</th>
+                                <th class="text-end">Entrata lorda stimata</th>
+                                <th>Frequenza stimata</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in _items)
+                            {
+                                <tr>
+                                    <td>
+                                        <div><strong>@item.Symbol</strong></div>
+                                        <div class="text-muted small">@item.InstrumentName</div>
+                                        <div class="text-muted small">@item.Sector</div>
+                                    </td>
+                                    <td class="text-end">@item.UnitsHeld.ToString("N2")</td>
+                                    <td class="text-end">@item.PeriodicDividend.ToString("N4")</td>
+                                    <td class="text-end">@item.AnnualDividend.ToString("N4")</td>
+                                    <td>@(item.ExDividendDate?.ToString("dd/MM/yyyy") ?? "-")</td>
+                                    <td>@(item.PaymentDate?.ToString("dd/MM/yyyy") ?? "-")</td>
+                                    <td class="text-end">@item.EstimatedGrossAmount.ToString("N2")</td>
+                                    <td>@item.FrequencyLabel</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Calendario mensile -->
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <h5 class="card-title mb-3">Calendario mensile entrate da dividendo</h5>
+
+            @if (_monthlySummaries.Count == 0)
+            {
+                <div class="text-muted">
+                    Nessuna entrata da dividendo stimata disponibile.
+                </div>
+            }
+            else
+            {
+                @foreach (var month in _monthlySummaries)
+                {
+                    <div class="mb-4">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h6 class="mb-0 text-capitalize">@month.Label</h6>
+                            <span class="badge text-bg-primary">
+                                @month.EstimatedGrossTotal.ToString("N2")
+                            </span>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="table table-sm table-bordered align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Titolo</th>
+                                        <th>Payment Date</th>
+                                        <th class="text-end">Entrata lorda</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var item in month.Items)
+                                    {
+                                        <tr>
+                                            <td>
+                                                <div><strong>@item.Symbol</strong></div>
+                                                <div class="text-muted small">@item.InstrumentName</div>
+                                            </td>
+                                            <td>@(item.PaymentDate?.ToString("dd/MM/yyyy") ?? "-")</td>
+                                            <td class="text-end">@item.EstimatedGrossAmount.ToString("N2")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private bool _isLoading = true;
+
+    private List<DividendCalendarItemDto> _items = new();
+    private List<DividendMonthlySummaryDto> _monthlySummaries = new();
+
+    private decimal _thisMonthTotal;
+    private decimal _nextMonthTotal;
+    private decimal _annualTotal;
+
+    private string? _nextPaymentLabel;
+    private decimal? _nextPaymentAmount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+
+        _items = await DividendCalendarService.GetDividendPositionsAsync();
+        _monthlySummaries = await DividendCalendarService.GetMonthlySummariesAsync();
+
+        var today = DateTime.Today;
+        var thisMonth = new DateTime(today.Year, today.Month, 1);
+        var nextMonth = thisMonth.AddMonths(1);
+
+        _thisMonthTotal = _monthlySummaries
+            .Where(x => x.Year == thisMonth.Year && x.Month == thisMonth.Month)
+            .Sum(x => x.EstimatedGrossTotal);
+
+        _nextMonthTotal = _monthlySummaries
+            .Where(x => x.Year == nextMonth.Year && x.Month == nextMonth.Month)
+            .Sum(x => x.EstimatedGrossTotal);
+
+        _annualTotal = Math.Round(_items.Sum(x => x.AnnualDividend * x.UnitsHeld), 2);
+
+        var nextPayment = _items
+            .Where(x => x.PaymentDate.HasValue && x.PaymentDate.Value.Date >= today)
+            .OrderBy(x => x.PaymentDate)
+            .FirstOrDefault();
+
+        if (nextPayment is not null)
+        {
+            _nextPaymentLabel = $"{nextPayment.Symbol} - {nextPayment.PaymentDate:dd/MM/yyyy}";
+            _nextPaymentAmount = nextPayment.EstimatedGrossAmount;
+        }
+
+        _isLoading = false;
+    }
+}
