@@ -29,13 +29,13 @@ builder.Services.AddHostedService<PortfolioRefreshService>();
 
 builder.Services.AddScoped<DividendCalendarService>();
 
-var runLegacyTargetMigration =
-    builder.Configuration.GetValue<bool>("DataMigration:RunLegacyPortfolioTargetMigrationOnStartup");
+//var runLegacyTargetMigration =
+//    builder.Configuration.GetValue<bool>("DataMigration:RunLegacyPortfolioTargetMigrationOnStartup");
 
-if (runLegacyTargetMigration)
-{
-    builder.Services.AddHostedService<LegacyPortfolioTargetsMigrationHostedService>();
-}
+//if (runLegacyTargetMigration)
+//{
+//    builder.Services.AddHostedService<LegacyPortfolioTargetsMigrationHostedService>();
+//}
 
 // Razor Components / Interactive Server
 builder.Services.AddRazorComponents()
