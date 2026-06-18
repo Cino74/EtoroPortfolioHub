@@ -11,6 +11,7 @@ public sealed class ApplicationDbContext : DbContext
     }
 
     public DbSet<PortfolioTargetEntity> PortfolioTargets => Set<PortfolioTargetEntity>();
+    public DbSet<DividendEventEntity> DividendEvents => Set<DividendEventEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -34,8 +35,45 @@ public sealed class ApplicationDbContext : DbContext
                 .HasMaxLength(300)
                 .IsRequired();
 
-            entity.Property(x => x.TargetPercentage)
+            entity.Property(x => x.CreatedUtc)
                 .IsRequired();
+
+            entity.Property(x => x.UpdatedUtc)
+                .IsRequired();
+
+            entity.HasIndex(x => new { x.UserId, x.InstrumentId })
+                .IsUnique();
+        });
+
+        modelBuilder.Entity<DividendEventEntity>(entity =>
+        {
+            entity.ToTable("DividendEvents");
+
+            entity.HasKey(x => x.Id);
+
+            entity.Property(x => x.UserId)
+                .HasMaxLength(200)
+                .IsRequired();
+
+            entity.Property(x => x.Symbol)
+                .HasMaxLength(100)
+                .IsRequired();
+
+            entity.Property(x => x.CompanyName)
+                .HasMaxLength(300)
+                .IsRequired();
+
+            entity.Property(x => x.Sector)
+                .HasMaxLength(200);
+
+            entity.Property(x => x.AnnualDividend)
+                .HasPrecision(18, 6);
+
+            entity.Property(x => x.PeriodicDividend)
+                .HasPrecision(18, 6);
+
+            entity.Property(x => x.Notes)
+                .HasMaxLength(1000);
 
             entity.Property(x => x.CreatedUtc)
                 .IsRequired();
@@ -43,8 +81,8 @@ public sealed class ApplicationDbContext : DbContext
             entity.Property(x => x.UpdatedUtc)
                 .IsRequired();
 
-            // Un solo target per utente e strumento
-            entity.HasIndex(x => new { x.UserId, x.InstrumentId })
+            // Evita doppioni per lo stesso utente e lo stesso evento dividendo
+            entity.HasIndex(x => new { x.UserId, x.Symbol, x.ExDividendDate, x.PaymentDate })
                 .IsUnique();
         });
     }

@@ -1,39 +1,193 @@
 ﻿using System.Globalization;
-using System.Text.Json;
+using EtoroPortfolioHub.Data;
+using EtoroPortfolioHub.Data.Entities;
 using EtoroPortfolioHub.Models;
 using EtoroPortfolioHub.State;
+using Microsoft.EntityFrameworkCore;
 
 namespace EtoroPortfolioHub.Services;
 
 public sealed class DividendCalendarService
 {
-    private readonly string _filePath;
+    private const string DefaultUserId = "default";
+
+    private readonly ApplicationDbContext _db;
     private readonly PortfolioState _portfolioState;
-    private readonly ILogger<DividendCalendarService> _logger;
 
     public DividendCalendarService(
-        IWebHostEnvironment environment,
-        PortfolioState portfolioState,
-        ILogger<DividendCalendarService> logger)
+        ApplicationDbContext db,
+        PortfolioState portfolioState)
     {
+        _db = db;
         _portfolioState = portfolioState;
-        _logger = logger;
-
-        var dataFolder = Path.Combine(environment.ContentRootPath, "App_Data");
-        Directory.CreateDirectory(dataFolder);
-
-        _filePath = Path.Combine(dataFolder, "dividend-calendar.json");
     }
 
-    public async Task<List<DividendCalendarItemDto>> GetDividendPositionsAsync(CancellationToken cancellationToken = default)
-    {
-        var snapshot = _portfolioState.GetSnapshot();
-        var calendarItems = await LoadCalendarFromFileAsync(cancellationToken);
+    // =========================
+    // CRUD base
+    // =========================
 
-        if (calendarItems.Count == 0)
+    public async Task<List<DividendEventItem>> GetAllAsync(string? userId = null)
+    {
+        var effectiveUserId = NormalizeUserId(userId);
+
+        return await _db.DividendEvents
+            .Where(x => x.UserId == effectiveUserId)
+            .OrderBy(x => x.PaymentDate)
+            .ThenBy(x => x.Symbol)
+            .Select(x => new DividendEventItem
+            {
+                Id = x.Id,
+                InstrumentId = x.InstrumentId,
+                Symbol = x.Symbol,
+                CompanyName = x.CompanyName,
+                Sector = x.Sector,
+                ExDividendDate = x.ExDividendDate,
+                PaymentDate = x.PaymentDate,
+                AnnualDividend = x.AnnualDividend,
+                PeriodicDividend = x.PeriodicDividend,
+                Notes = x.Notes
+            })
+            .ToListAsync();
+    }
+
+    public async Task<DividendEventItem?> GetByIdAsync(int id, string? userId = null)
+    {
+        var effectiveUserId = NormalizeUserId(userId);
+
+        var entity = await _db.DividendEvents
+            .FirstOrDefaultAsync(x => x.Id == id && x.UserId == effectiveUserId);
+
+        if (entity is null)
+            return null;
+
+        return new DividendEventItem
+        {
+            Id = entity.Id,
+            InstrumentId = entity.InstrumentId,
+            Symbol = entity.Symbol,
+            CompanyName = entity.CompanyName,
+            Sector = entity.Sector,
+            ExDividendDate = entity.ExDividendDate,
+            PaymentDate = entity.PaymentDate,
+            AnnualDividend = entity.AnnualDividend,
+            PeriodicDividend = entity.PeriodicDividend,
+            Notes = entity.Notes
+        };
+    }
+
+    public async Task SaveOrUpdateAsync(DividendEventItem item, string? userId = null)
+    {
+        var effectiveUserId = NormalizeUserId(userId);
+        var utcNow = DateTime.UtcNow;
+
+        // Controllo duplicati logici
+        var duplicate = await _db.DividendEvents
+            .AnyAsync(x =>
+                x.UserId == effectiveUserId &&
+                x.Id != item.Id &&
+                x.Symbol == item.Symbol &&
+                x.ExDividendDate == item.ExDividendDate &&
+                x.PaymentDate == item.PaymentDate);
+
+        if (duplicate)
+        {
+            throw new InvalidOperationException(
+                "Esiste già un evento dividendo con lo stesso simbolo e le stesse date per questo utente.");
+        }
+
+        if (item.Id == 0)
+        {
+            var entity = new DividendEventEntity
+            {
+                UserId = effectiveUserId,
+                InstrumentId = item.InstrumentId,
+                Symbol = item.Symbol.Trim(),
+                CompanyName = item.CompanyName.Trim(),
+                Sector = item.Sector.Trim(),
+                ExDividendDate = item.ExDividendDate,
+                PaymentDate = item.PaymentDate,
+                AnnualDividend = item.AnnualDividend,
+                PeriodicDividend = item.PeriodicDividend,
+                Notes = item.Notes?.Trim() ?? string.Empty,
+                CreatedUtc = utcNow,
+                UpdatedUtc = utcNow
+            };
+
+            await _db.DividendEvents.AddAsync(entity);
+        }
+        else
+        {
+            var entity = await _db.DividendEvents
+                .FirstOrDefaultAsync(x => x.Id == item.Id && x.UserId == effectiveUserId);
+
+            if (entity is null)
+            {
+                throw new InvalidOperationException("Evento dividendo non trovato.");
+            }
+
+            entity.InstrumentId = item.InstrumentId;
+            entity.Symbol = item.Symbol.Trim();
+            entity.CompanyName = item.CompanyName.Trim();
+            entity.Sector = item.Sector.Trim();
+            entity.ExDividendDate = item.ExDividendDate;
+            entity.PaymentDate = item.PaymentDate;
+            entity.AnnualDividend = item.AnnualDividend;
+            entity.PeriodicDividend = item.PeriodicDividend;
+            entity.Notes = item.Notes?.Trim() ?? string.Empty;
+            entity.UpdatedUtc = utcNow;
+        }
+
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task DeleteAsync(int id, string? userId = null)
+    {
+        var effectiveUserId = NormalizeUserId(userId);
+
+        var entity = await _db.DividendEvents
+            .FirstOrDefaultAsync(x => x.Id == id && x.UserId == effectiveUserId);
+
+        if (entity is null)
+            return;
+
+        _db.DividendEvents.Remove(entity);
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task ClearAsync(string? userId = null)
+    {
+        var effectiveUserId = NormalizeUserId(userId);
+
+        var entities = await _db.DividendEvents
+            .Where(x => x.UserId == effectiveUserId)
+            .ToListAsync();
+
+        if (entities.Count == 0)
+            return;
+
+        _db.DividendEvents.RemoveRange(entities);
+        await _db.SaveChangesAsync();
+    }
+
+    // =========================
+    // Logica di calcolo
+    // =========================
+
+    public async Task<List<DividendCalendarItemDto>> GetDividendPositionsAsync(string? userId = null, CancellationToken cancellationToken = default)
+    {
+        var effectiveUserId = NormalizeUserId(userId);
+        var snapshot = _portfolioState.GetSnapshot();
+
+        var dividendEvents = await _db.DividendEvents
+            .Where(x => x.UserId == effectiveUserId)
+            .OrderBy(x => x.PaymentDate)
+            .ThenBy(x => x.Symbol)
+            .ToListAsync(cancellationToken);
+
+        if (dividendEvents.Count == 0)
             return new List<DividendCalendarItemDto>();
 
-        // Solo posizioni LONG su Stock/ETF
+        // Solo posizioni LONG su stock / ETF
         var holdings = snapshot.Positions
             .Where(p => p.IsBuy)
             .Where(p =>
@@ -51,42 +205,44 @@ public sealed class DividendCalendarService
             .Where(x => !string.IsNullOrWhiteSpace(x.Symbol) && x.Units > 0)
             .ToList();
 
-        var matched = new List<DividendCalendarItemDto>();
+        var result = new List<DividendCalendarItemDto>();
 
         foreach (var holding in holdings)
         {
-            var exactMatch = calendarItems
+            var matches = dividendEvents
                 .Where(x => NormalizeSymbol(x.Symbol) == holding.Symbol)
                 .OrderBy(x => x.PaymentDate ?? DateTime.MaxValue)
-                .FirstOrDefault();
+                .ToList();
 
-            if (exactMatch is null)
-                continue;
-
-            matched.Add(new DividendCalendarItemDto
+            foreach (var match in matches)
             {
-                Symbol = exactMatch.Symbol,
-                CompanyName = exactMatch.CompanyName,
-                Sector = exactMatch.Sector,
-                ExDividendDate = exactMatch.ExDividendDate,
-                PaymentDate = exactMatch.PaymentDate,
-                AnnualDividend = exactMatch.AnnualDividend,
-                PeriodicDividend = exactMatch.PeriodicDividend,
-                UnitsHeld = holding.Units,
-                InstrumentName = holding.InstrumentName,
-                InstrumentId = holding.InstrumentId
-            });
+                result.Add(new DividendCalendarItemDto
+                {
+                    Id = match.Id,
+                    InstrumentId = match.InstrumentId ?? holding.InstrumentId,
+                    Symbol = match.Symbol,
+                    CompanyName = match.CompanyName,
+                    InstrumentName = holding.InstrumentName,
+                    Sector = match.Sector,
+                    ExDividendDate = match.ExDividendDate,
+                    PaymentDate = match.PaymentDate,
+                    AnnualDividend = match.AnnualDividend,
+                    PeriodicDividend = match.PeriodicDividend,
+                    UnitsHeld = holding.Units,
+                    Notes = match.Notes
+                });
+            }
         }
 
-        return matched
+        return result
             .OrderBy(x => x.PaymentDate ?? DateTime.MaxValue)
             .ThenBy(x => x.Symbol)
             .ToList();
     }
 
-    public async Task<List<DividendMonthlySummaryDto>> GetMonthlySummariesAsync(CancellationToken cancellationToken = default)
+    public async Task<List<DividendMonthlySummaryDto>> GetMonthlySummariesAsync(string? userId = null, CancellationToken cancellationToken = default)
     {
-        var items = await GetDividendPositionsAsync(cancellationToken);
+        var items = await GetDividendPositionsAsync(userId, cancellationToken);
 
         return items
             .Where(x => x.PaymentDate.HasValue)
@@ -105,31 +261,19 @@ public sealed class DividendCalendarService
             .ToList();
     }
 
-    private async Task<List<DividendCalendarItemDto>> LoadCalendarFromFileAsync(CancellationToken cancellationToken)
+    // =========================
+    // Helpers
+    // =========================
+
+    private static string NormalizeUserId(string? userId)
     {
-        if (!File.Exists(_filePath))
-        {
-            _logger.LogWarning("File dividend-calendar.json non trovato in {Path}", _filePath);
-            return new List<DividendCalendarItemDto>();
-        }
-
-        var json = await File.ReadAllTextAsync(_filePath, cancellationToken);
-
-        if (string.IsNullOrWhiteSpace(json))
-            return new List<DividendCalendarItemDto>();
-
-        var items = JsonSerializer.Deserialize<List<DividendCalendarItemDto>>(json)
-                    ?? new List<DividendCalendarItemDto>();
-
-        return items
-            .Where(x => !string.IsNullOrWhiteSpace(x.Symbol))
-            .ToList();
+        return string.IsNullOrWhiteSpace(userId)
+            ? DefaultUserId
+            : userId.Trim();
     }
 
     private static string NormalizeSymbol(string symbol)
     {
-        return symbol
-            .Trim()
-            .ToUpperInvariant();
+        return symbol.Trim().ToUpperInvariant();
     }
 }

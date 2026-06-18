@@ -2,8 +2,13 @@
 
 public sealed class DividendCalendarItemDto
 {
+    public int Id { get; set; }
+
+    public int? InstrumentId { get; set; }
+
     public string Symbol { get; set; } = string.Empty;
     public string CompanyName { get; set; } = string.Empty;
+    public string InstrumentName { get; set; } = string.Empty;
     public string Sector { get; set; } = string.Empty;
 
     public DateTime? ExDividendDate { get; set; }
@@ -14,8 +19,7 @@ public sealed class DividendCalendarItemDto
 
     public decimal UnitsHeld { get; set; }
 
-    public string InstrumentName { get; set; } = string.Empty;
-    public int InstrumentId { get; set; }
+    public string Notes { get; set; } = string.Empty;
 
     public decimal EstimatedGrossAmount =>
         Math.Round(UnitsHeld * PeriodicDividend, 2);

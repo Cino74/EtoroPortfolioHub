@@ -27,6 +27,8 @@ builder.Services.AddHttpClient<EtoroRestClient>();
 // Background services
 builder.Services.AddHostedService<PortfolioRefreshService>();
 
+builder.Services.AddScoped<DividendCalendarService>();
+
 var runLegacyTargetMigration =
     builder.Configuration.GetValue<bool>("DataMigration:RunLegacyPortfolioTargetMigrationOnStartup");
 
