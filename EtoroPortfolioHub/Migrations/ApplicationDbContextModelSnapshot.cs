@@ -111,8 +111,9 @@ namespace EtoroPortfolioHub.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
-                    b.Property<int>("TargetPercentage")
-                        .HasColumnType("int");
+                    b.Property<decimal>("TargetPercentage")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<DateTime>("UpdatedUtc")
                         .HasColumnType("datetime2");

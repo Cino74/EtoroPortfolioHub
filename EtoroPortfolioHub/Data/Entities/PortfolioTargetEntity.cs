@@ -10,7 +10,7 @@ public sealed class PortfolioTargetEntity
     public string Symbol { get; set; } = string.Empty;
     public string InstrumentName { get; set; } = string.Empty;
 
-    public int TargetPercentage { get; set; }
+    public decimal TargetPercentage { get; set; }
 
     public DateTime CreatedUtc { get; set; }
     public DateTime UpdatedUtc { get; set; }

@@ -17,6 +17,7 @@ public sealed class ApplicationDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
+
         modelBuilder.Entity<PortfolioTargetEntity>(entity =>
         {
             entity.ToTable("PortfolioTargets");
@@ -35,6 +36,9 @@ public sealed class ApplicationDbContext : DbContext
                 .HasMaxLength(300)
                 .IsRequired();
 
+            entity.Property(x => x.TargetPercentage)
+                .HasPrecision(18, 2);
+
             entity.Property(x => x.CreatedUtc)
                 .IsRequired();
 
@@ -44,6 +48,7 @@ public sealed class ApplicationDbContext : DbContext
             entity.HasIndex(x => new { x.UserId, x.InstrumentId })
                 .IsUnique();
         });
+
 
         modelBuilder.Entity<DividendEventEntity>(entity =>
         {

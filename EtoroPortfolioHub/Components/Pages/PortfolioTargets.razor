@@ -1,7 +1,7 @@
 ﻿@page "/portfolio-targets"
 @using EtoroPortfolioHub.Models
-@using EtoroPortfolioHub.State
 @using EtoroPortfolioHub.Services
+@using EtoroPortfolioHub.State
 @inject PortfolioState PortfolioState
 @inject PortfolioTargetService PortfolioTargetService
 
@@ -9,7 +9,46 @@
 
 <h3 class="mb-3">Target Portafoglio</h3>
 
-@if (_isLoading)
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
+    <div class="btn-group" role="group" aria-label="Filtro categoria">
+        <button type="button"
+                class="btn @(IsSelectedCategory("TUTTI") ? "btn-primary" : "btn-outline-primary")"
+                @onclick='() => SetCategoryFilter("TUTTI")'>
+            TUTTI
+        </button>
+
+        <button type="button"
+                class="btn @(IsSelectedCategory("ETF") ? "btn-primary" : "btn-outline-primary")"
+                @onclick='() => SetCategoryFilter("ETF")'>
+            ETF
+        </button>
+
+        <button type="button"
+                class="btn @(IsSelectedCategory("AZIONI") ? "btn-primary" : "btn-outline-primary")"
+                @onclick='() => SetCategoryFilter("AZIONI")'>
+            AZIONI
+        </button>
+    </div>
+
+    <div class="d-flex gap-2">
+        <button class="btn btn-outline-secondary" @onclick="LoadAsync" disabled="@_isBusy">
+            Aggiorna
+        </button>
+
+        <button class="btn btn-primary" @onclick="SaveAsync" disabled="@_isBusy">
+            Salva target
+        </button>
+    </div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(_message))
+{
+    <div class="alert @(_isError ? "alert-danger" : "alert-success")">
+        @_message
+    </div>
+}
+
+@if (_isBusy && _rows.Count == 0)
 {
     <div class="alert alert-info">
         Caricamento dati...
@@ -17,77 +56,30 @@
 }
 else
 {
+    var filteredRows = GetFilteredRows();
+
     <div class="row g-3 mb-4">
-        <div class="col-md-3">
+        <div class="col-md-6 col-lg-3">
             <div class="card shadow-sm h-100">
                 <div class="card-body">
-                    <div class="text-muted small">Titoli in portafoglio</div>
-                    <div class="fs-4 fw-bold">@_rows.Count</div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-md-3">
-            <div class="card shadow-sm h-100">
-                <div class="card-body">
-                    <div class="text-muted small">Totale investito</div>
-                    <div class="fs-4 fw-bold">@_totalInvested.ToString("N2")</div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-md-3">
-            <div class="card shadow-sm h-100">
-                <div class="card-body">
-                    <div class="text-muted small">Totale target impostato</div>
-                    <div class="fs-4 fw-bold @(TotalTarget > 100 ? "text-danger" : "text-success")">
-                        @TotalTarget.ToString("N0") %
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-md-3">
-            <div class="card shadow-sm h-100">
-                <div class="card-body d-flex flex-column justify-content-center gap-2">
-                    <button class="btn btn-outline-secondary" @onclick="RefreshAsync">
-                        Aggiorna
-                    </button>
-                    <button class="btn btn-primary" @onclick="SaveAsync">
-                        Salva target
-                    </button>
+                    <div class="text-muted small">Titoli filtrati</div>
+                    <div class="fs-4 fw-bold">@filteredRows.Count</div>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="card shadow-sm mb-4">
-        <div class="card-body">
-            <strong>Ultimo aggiornamento:</strong>
-            @(_lastRefresh?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "-")
-        </div>
-    </div>
-
-    <div class="alert alert-light border mb-4">
-        <strong>Nota:</strong>
-        <ul class="mb-0 mt-2">
-            <li><strong>Delta valore positivo</strong> → devi <strong>aggiungere</strong> capitale per raggiungere il target.</li>
-            <li><strong>Delta valore negativo</strong> → devi <strong>ridurre</strong> capitale perché sei sopra target.</li>
-            <li><strong>Delta valore pari a 0</strong> → il titolo è <strong>allineato</strong>.</li>
-        </ul>
-    </div>
-
-    @if (!string.IsNullOrWhiteSpace(_message))
+    @if (TotalTarget > 100m)
     {
-        <div class="alert @(_isError ? "alert-danger" : "alert-success")">
-            @_message
+        <div class="alert alert-warning">
+            Il totale complessivo dei target supera il 100%.
         </div>
     }
 
-    @if (_rows.Count == 0)
+    @if (filteredRows.Count == 0)
     {
         <div class="alert alert-warning">
-            Nessun titolo trovato nel portafoglio.
+            Nessun titolo disponibile per il filtro selezionato.
         </div>
     }
     else
@@ -97,134 +89,129 @@ else
                 <thead>
                     <tr>
                         <th>Titolo</th>
+                        <th>Categoria</th>
+                        <th class="text-end">Totale investito</th>
                         <th class="text-end">Peso attuale %</th>
                         <th class="text-end">Target %</th>
-                        <th class="text-end">Differenza %</th>
-                        <th class="text-end">Delta valore $</th>
+                        <th class="text-end">Delta %</th>
+                        <th class="text-end">Delta valore</th>
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var row in _rows.OrderBy(x => x.Symbol))
+                    @foreach (var row in filteredRows)
                     {
                         <tr>
                             <td>
                                 <div><strong>@row.Symbol</strong></div>
                                 <div class="text-muted small">@row.InstrumentName</div>
+                                <div class="text-muted small">ID: @row.InstrumentId</div>
                             </td>
+
+                            <td>
+                                <span class="badge @(row.Category == "ETF" ? "text-bg-info" : row.Category == "AZIONI" ? "text-bg-secondary" : "text-bg-light")">
+                                    @row.Category
+                                </span>
+                            </td>
+
+                            <td class="text-end">@row.CurrentInvestedAmount.ToString("N2")</td>
 
                             <td class="text-end">
                                 @row.CurrentWeightPercentage.ToString("N2") %
                             </td>
 
-                            <td style="max-width: 160px;">
+                            <td class="text-end" style="min-width: 140px;">
                                 <InputNumber @bind-Value="row.TargetPercentage"
                                              class="form-control text-end"
-                                             TValue="int" />
+                                             TValue="decimal"
+                                             step="0.01" />
                             </td>
 
                             <td class="text-end @(row.DeltaPercentage >= 0 ? "text-success" : "text-danger")">
                                 @row.DeltaPercentage.ToString("N2") %
                             </td>
 
-                            <td class="text-end @GetDeltaValueCssClass(row)">
-                                <div>@row.DeltaValue.ToString("N2")</div>
-                                <div class="small text-muted">@row.DeltaAction</div>
+                            <td class="text-end @(row.DeltaValue >= 0 ? "text-success" : "text-danger")">
+                                @row.DeltaValue.ToString("N2")
                             </td>
                         </tr>
                     }
                 </tbody>
+                <tfoot>
+                    <tr class="table-light">
+                        <th colspan="4" class="text-end">Totale target filtrato</th>
+                        <th class="text-end @(FilteredTotalTarget > 100m ? "text-danger" : "text-success")">
+                            @FilteredTotalTarget.ToString("N2") %
+                        </th>
+                        <th colspan="2"></th>
+                    </tr>
+                </tfoot>
             </table>
         </div>
     }
 }
 
 @code {
-    private bool _isLoading = true;
-    private bool _isError = false;
+    private bool _isBusy;
+    private bool _isError;
     private string? _message;
 
     private List<PortfolioTargetRowVm> _rows = new();
-    private decimal _totalInvested;
-    private DateTimeOffset? _lastRefresh;
+    private string _selectedCategory = "TUTTI";
 
     private decimal TotalTarget => _rows.Sum(x => x.TargetPercentage);
+
+    private decimal FilteredTotalTarget => GetFilteredRows().Sum(x => x.TargetPercentage);
 
     protected override async Task OnInitializedAsync()
     {
         await LoadAsync();
     }
 
-    private async Task RefreshAsync()
+    private async Task LoadAsync()
     {
-        await LoadAsync(keepUserTargets: true);
-    }
-
-    private async Task LoadAsync(bool keepUserTargets = false)
-    {
-        _isLoading = true;
-        _message = null;
+        _isBusy = true;
         _isError = false;
+        _message = null;
 
         try
         {
             var snapshot = PortfolioState.GetSnapshot();
+            var savedTargets = await PortfolioTargetService.GetAllAsync();
 
-            // Mantieni i target già digitati se richiesto
-            var currentTargets = keepUserTargets
-                ? _rows.ToDictionary(x => x.InstrumentId, x => x.TargetPercentage)
-                : null;
+            var totalInvestedPortfolio = snapshot.Positions.Sum(x => x.InvestedAmount);
 
-            _totalInvested = snapshot.Positions.Sum(p => p.InvestedAmount);
-
-            var groupedTitles = snapshot.Positions
+            _rows = snapshot.Positions
                 .GroupBy(p => p.InstrumentId)
                 .Select(g =>
                 {
-                    var totalInvestedForInstrument = g.Sum(x => x.InvestedAmount);
+                    var investedForInstrument = g.Sum(x => x.InvestedAmount);
+
+                    savedTargets.TryGetValue(g.Key, out var savedTarget);
+
+                    var targetPercentage = savedTarget?.TargetPercentage ?? 0m;
+                    var currentWeight = totalInvestedPortfolio == 0m
+                        ? 0m
+                        : Math.Round(investedForInstrument / totalInvestedPortfolio * 100m, 2);
+
+                    var instrumentTypeDescription =
+                        g.Select(x => x.InstrumentTypeDescription)
+                         .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))
+                        ?? string.Empty;
 
                     return new PortfolioTargetRowVm
                     {
                         InstrumentId = g.Key,
                         Symbol = g.Select(x => x.Symbol).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? g.Key.ToString(),
                         InstrumentName = g.Select(x => x.InstrumentName).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? $"Strumento {g.Key}",
-                        CurrentInvestedAmount = totalInvestedForInstrument,
-                        TotalPortfolioInvested = _totalInvested,
-                        CurrentWeightPercentage = _totalInvested == 0
-                            ? 0
-                            : Math.Round(totalInvestedForInstrument / _totalInvested * 100m, 2),
-                        TargetPercentage = 0
+                        Category = NormalizeCategory(instrumentTypeDescription),
+                        CurrentInvestedAmount = investedForInstrument,
+                        TotalPortfolioInvested = totalInvestedPortfolio,
+                        CurrentWeightPercentage = currentWeight,
+                        TargetPercentage = targetPercentage
                     };
                 })
                 .OrderBy(x => x.Symbol)
                 .ToList();
-
-            // Se sto aggiornando manualmente, mantengo i target già presenti in pagina
-            if (currentTargets is not null)
-            {
-                foreach (var row in groupedTitles)
-                {
-                    if (currentTargets.TryGetValue(row.InstrumentId, out var target))
-                    {
-                        row.TargetPercentage = target;
-                    }
-                }
-            }
-            else
-            {
-                // Al primo caricamento, carico dal file
-                var savedTargets = await PortfolioTargetService.GetAllAsync();
-
-                foreach (var row in groupedTitles)
-                {
-                    if (savedTargets.TryGetValue(row.InstrumentId, out var saved))
-                    {
-                        row.TargetPercentage = saved.TargetPercentage;
-                    }
-                }
-            }
-
-            _rows = groupedTitles;
-            _lastRefresh = DateTimeOffset.Now;
         }
         catch (Exception ex)
         {
@@ -233,24 +220,27 @@ else
         }
         finally
         {
-            _isLoading = false;
+            _isBusy = false;
         }
     }
 
     private async Task SaveAsync()
     {
-        _message = null;
+        _isBusy = true;
         _isError = false;
+        _message = null;
 
         try
         {
-            var items = _rows.Select(x => new PortfolioTargetItem
-            {
-                InstrumentId = x.InstrumentId,
-                Symbol = x.Symbol,
-                InstrumentName = x.InstrumentName,
-                TargetPercentage = x.TargetPercentage
-            }).ToList();
+            var items = _rows
+                .Select(x => new PortfolioTargetItem
+                {
+                    InstrumentId = x.InstrumentId,
+                    Symbol = x.Symbol,
+                    InstrumentName = x.InstrumentName,
+                    TargetPercentage = Math.Round(x.TargetPercentage, 2)
+                })
+                .ToList();
 
             await PortfolioTargetService.SaveAllAsync(items);
 
@@ -261,48 +251,70 @@ else
             _isError = true;
             _message = $"Errore durante il salvataggio: {ex.Message}";
         }
+        finally
+        {
+            _isBusy = false;
+        }
     }
 
-    private static string GetDeltaValueCssClass(PortfolioTargetRowVm row)
+    private void SetCategoryFilter(string category)
     {
-        if (row.DeltaValue > 0)
-            return "text-danger";   // manca capitale → devi aggiungere
+        _selectedCategory = category;
+    }
 
-        if (row.DeltaValue < 0)
-            return "text-success";  // sei sopra target → devi ridurre
+    private bool IsSelectedCategory(string category)
+    {
+        return string.Equals(_selectedCategory, category, StringComparison.OrdinalIgnoreCase);
+    }
 
-        return "text-muted";
+    private List<PortfolioTargetRowVm> GetFilteredRows()
+    {
+        if (string.Equals(_selectedCategory, "TUTTI", StringComparison.OrdinalIgnoreCase))
+            return _rows.OrderBy(x => x.Symbol).ToList();
+
+        return _rows
+            .Where(x => string.Equals(x.Category, _selectedCategory, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(x => x.Symbol)
+            .ToList();
+    }
+
+    private static string NormalizeCategory(string instrumentTypeDescription)
+    {
+        if (string.IsNullOrWhiteSpace(instrumentTypeDescription))
+            return "ALTRO";
+
+        var value = instrumentTypeDescription.Trim().ToUpperInvariant();
+
+        if (value.Contains("ETF"))
+            return "ETF";
+
+        if (value.Contains("STOCK"))
+            return "AZIONI";
+
+        return value;
     }
 
     private sealed class PortfolioTargetRowVm
     {
         public int InstrumentId { get; set; }
+
         public string Symbol { get; set; } = string.Empty;
         public string InstrumentName { get; set; } = string.Empty;
+        public string Category { get; set; } = string.Empty;
 
         public decimal CurrentInvestedAmount { get; set; }
         public decimal TotalPortfolioInvested { get; set; }
 
         public decimal CurrentWeightPercentage { get; set; }
-        public int TargetPercentage { get; set; }
+        public decimal TargetPercentage { get; set; }
 
-        // Differenza percentuale "come prima":
-        // verde se >= 0, rosso se manca rispetto al target
-        public decimal DeltaPercentage => Math.Round(CurrentWeightPercentage - TargetPercentage, 2);
+        public decimal DeltaPercentage =>
+            Math.Round(TargetPercentage - CurrentWeightPercentage, 2);
 
-        // Valore target monetario per il titolo
         public decimal TargetValue =>
             Math.Round(TotalPortfolioInvested * TargetPercentage / 100m, 2);
 
-        // Delta monetario operativo:
-        // > 0 -> devi aggiungere
-        // < 0 -> devi ridurre
         public decimal DeltaValue =>
             Math.Round(TargetValue - CurrentInvestedAmount, 2);
-
-        public string DeltaAction =>
-            DeltaValue > 0 ? "Aggiungere"
-            : DeltaValue < 0 ? "Ridurre"
-            : "Allineato";
     }
 }

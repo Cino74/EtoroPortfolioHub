@@ -9,5 +9,5 @@ public sealed class PortfolioTargetItem
     /// <summary>
     /// Percentuale target desiderata nel portafoglio (es. 5.50 = 5,50%)
     /// </summary>
-    public int TargetPercentage { get; set; }
+    public decimal TargetPercentage { get; set; }
 }

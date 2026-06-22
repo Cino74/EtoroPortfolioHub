@@ -510,7 +510,7 @@ else
 
                 savedTargets.TryGetValue(g.Key, out var savedTarget);
 
-                var targetPercentage = savedTarget?.TargetPercentage ?? 0;
+                var targetPercentage = savedTarget?.TargetPercentage ?? 0m;
                 var currentWeight = _totalInvested == 0m
                     ? 0m
                     : Math.Round(investedForInstrument / _totalInvested * 100m, 2);
@@ -586,7 +586,7 @@ else
         public decimal TotalPortfolioInvested { get; set; }
 
         public decimal CurrentWeightPercentage { get; set; }
-        public int TargetPercentage { get; set; }
+        public decimal TargetPercentage { get; set; }
 
         public decimal DeltaPercentage =>
             Math.Round(CurrentWeightPercentage - TargetPercentage, 2);
