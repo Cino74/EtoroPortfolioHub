@@ -1,9 +1,11 @@
 ﻿using EtoroPortfolioHub.Data.Entities;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
 namespace EtoroPortfolioHub.Data;
 
-public sealed class ApplicationDbContext : DbContext
+public sealed class ApplicationDbContext : IdentityDbContext<IdentityUser>
 {
     public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
         : base(options)
@@ -16,7 +18,6 @@ public sealed class ApplicationDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
-
 
         modelBuilder.Entity<PortfolioTargetEntity>(entity =>
         {
@@ -48,7 +49,6 @@ public sealed class ApplicationDbContext : DbContext
             entity.HasIndex(x => new { x.UserId, x.InstrumentId })
                 .IsUnique();
         });
-
 
         modelBuilder.Entity<DividendEventEntity>(entity =>
         {
@@ -86,7 +86,6 @@ public sealed class ApplicationDbContext : DbContext
             entity.Property(x => x.UpdatedUtc)
                 .IsRequired();
 
-            // Evita doppioni per lo stesso utente e lo stesso evento dividendo
             entity.HasIndex(x => new { x.UserId, x.Symbol, x.ExDividendDate, x.PaymentDate })
                 .IsUnique();
         });

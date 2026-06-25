@@ -1,4 +1,5 @@
 ﻿@inherits LayoutComponentBase
+@using Microsoft.AspNetCore.Components.Authorization
 
 <div class="page">
     <div class="sidebar">
@@ -6,18 +7,48 @@
     </div>
 
     <main>
-@*         <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
-        </div> *@
+        <div class="top-row px-4 d-flex align-items-center justify-content-between">
+            <div>
+                <a href="/" class="text-decoration-none">
+                    Etoro Portfolio Hub
+                </a>
+            </div>
+
+            <div class="d-flex align-items-center gap-3">
+                <AuthorizeView>
+                    <Authorized>
+                        <span class="text-muted small">
+                            Utente:
+                            <strong>@context.User.Identity?.Name</strong>
+                        </span>
+
+                        <form action="/Identity/Account/Logout?returnUrl=/"
+                              method="post"
+                              class="m-0">
+                            <AntiforgeryToken />
+                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                                Logout
+                            </button>
+                        </form>
+                    </Authorized>
+
+                    <NotAuthorized>
+                        <a class="btn btn-sm btn-outline-primary"
+                           href="/Identity/Account/Login">
+                            Login
+                        </a>
+
+                        <a class="btn btn-sm btn-primary"
+                           href="/Identity/Account/Register">
+                            Registrati
+                        </a>
+                    </NotAuthorized>
+                </AuthorizeView>
+            </div>
+        </div>
 
         <article class="content px-4">
             @Body
         </article>
     </main>
-</div>
-
-<div id="blazor-error-ui" data-nosnippet>
-    An unhandled error has occurred.
-    <a href="." class="reload">Reload</a>
-    <span class="dismiss">🗙</span>
 </div>

@@ -3,6 +3,7 @@ using EtoroPortfolioHub.Data;
 using EtoroPortfolioHub.Models;
 using EtoroPortfolioHub.Services;
 using EtoroPortfolioHub.State;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -10,36 +11,38 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.Configure<EtoroOptions>(
     builder.Configuration.GetSection(EtoroOptions.SectionName));
 
-// Stato applicativo
 builder.Services.AddSingleton<PortfolioState>();
 
-// Database
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(
         builder.Configuration.GetConnectionString("AppDb")));
 
-// Servizi applicativi
+builder.Services.AddDefaultIdentity<IdentityUser>(options =>
+{
+    options.SignIn.RequireConfirmedAccount = false;
+    options.User.RequireUniqueEmail = true;
+
+    options.Password.RequiredLength = 8;
+    options.Password.RequireDigit = true;
+    options.Password.RequireLowercase = true;
+    options.Password.RequireUppercase = false;
+    options.Password.RequireNonAlphanumeric = false;
+})
+.AddEntityFrameworkStores<ApplicationDbContext>();
+
+builder.Services.AddCascadingAuthenticationState();
+builder.Services.AddScoped<CurrentUserService>();
 builder.Services.AddScoped<PortfolioTargetService>();
-
-// Client eToro
-builder.Services.AddHttpClient<EtoroRestClient>();
-
-// Background services
-builder.Services.AddHostedService<PortfolioRefreshService>();
-
 builder.Services.AddScoped<DividendCalendarService>();
 
-//var runLegacyTargetMigration =
-//    builder.Configuration.GetValue<bool>("DataMigration:RunLegacyPortfolioTargetMigrationOnStartup");
+builder.Services.AddHttpClient<EtoroRestClient>();
 
-//if (runLegacyTargetMigration)
-//{
-//    builder.Services.AddHostedService<LegacyPortfolioTargetsMigrationHostedService>();
-//}
+builder.Services.AddHostedService<PortfolioRefreshService>();
 
-// Razor Components / Interactive Server
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+
+builder.Services.AddRazorPages();
 
 var app = builder.Build();
 
@@ -48,9 +51,15 @@ if (!app.Environment.IsDevelopment())
     app.UseExceptionHandler("/Error");
 }
 
+
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseAntiforgery();
+
+app.UseAuthentication();
+app.UseAuthorization();
+
+app.MapRazorPages();
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();

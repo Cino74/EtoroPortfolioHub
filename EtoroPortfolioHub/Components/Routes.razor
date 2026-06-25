@@ -1,6 +1,39 @@
-﻿<Router AppAssembly="typeof(Program).Assembly" NotFoundPage="typeof(Pages.NotFound)">
-    <Found Context="routeData">
-        <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
-        <FocusOnNavigate RouteData="routeData" Selector="h1" />
-    </Found>
-</Router>
+﻿@using Microsoft.AspNetCore.Components.Authorization
+
+<CascadingAuthenticationState>
+    <Router AppAssembly="typeof(Program).Assembly">
+        <Found Context="routeData">
+            <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)">
+                <NotAuthorized>
+                    <div class="alert alert-warning m-3">
+                        Devi effettuare l'accesso per visualizzare questa pagina.
+                    </div>
+
+                    <div class="m-3">
+                        <a class="btn btn-primary" href="/Identity/Account/Login">
+                            Vai al login
+                        </a>
+
+                        <a class="btn btn-outline-secondary ms-2" href="/Identity/Account/Register">
+                            Registrati
+                        </a>
+                    </div>
+                </NotAuthorized>
+
+                <Authorizing>
+                    <div class="alert alert-info m-3">
+                        Verifica autorizzazione in corso...
+                    </div>
+                </Authorizing>
+            </AuthorizeRouteView>
+
+            <FocusOnNavigate RouteData="routeData" Selector="h1" />
+        </Found>
+
+        <NotFound>
+            <LayoutView Layout="typeof(Layout.MainLayout)">
+                <p class="m-3">Pagina non trovata.</p>
+            </LayoutView>
+        </NotFound>
+    </Router>
+</CascadingAuthenticationState>

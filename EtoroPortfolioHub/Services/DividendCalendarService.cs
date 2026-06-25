@@ -9,29 +9,30 @@ namespace EtoroPortfolioHub.Services;
 
 public sealed class DividendCalendarService
 {
-    private const string DefaultUserId = "default";
-
     private readonly ApplicationDbContext _db;
     private readonly PortfolioState _portfolioState;
+    private readonly CurrentUserService _currentUserService;
 
     public DividendCalendarService(
         ApplicationDbContext db,
-        PortfolioState portfolioState)
+        PortfolioState portfolioState,
+        CurrentUserService currentUserService)
     {
         _db = db;
         _portfolioState = portfolioState;
+        _currentUserService = currentUserService;
     }
 
     // =========================
     // CRUD base
     // =========================
 
-    public async Task<List<DividendEventItem>> GetAllAsync(string? userId = null)
+    public async Task<List<DividendEventItem>> GetAllAsync()
     {
-        var effectiveUserId = NormalizeUserId(userId);
+        var userId = await _currentUserService.GetRequiredUserIdAsync();
 
         return await _db.DividendEvents
-            .Where(x => x.UserId == effectiveUserId)
+            .Where(x => x.UserId == userId)
             .OrderBy(x => x.PaymentDate)
             .ThenBy(x => x.Symbol)
             .Select(x => new DividendEventItem
@@ -50,12 +51,12 @@ public sealed class DividendCalendarService
             .ToListAsync();
     }
 
-    public async Task<DividendEventItem?> GetByIdAsync(int id, string? userId = null)
+    public async Task<DividendEventItem?> GetByIdAsync(int id)
     {
-        var effectiveUserId = NormalizeUserId(userId);
+        var userId = await _currentUserService.GetRequiredUserIdAsync();
 
         var entity = await _db.DividendEvents
-            .FirstOrDefaultAsync(x => x.Id == id && x.UserId == effectiveUserId);
+            .FirstOrDefaultAsync(x => x.Id == id && x.UserId == userId);
 
         if (entity is null)
             return null;
@@ -75,35 +76,58 @@ public sealed class DividendCalendarService
         };
     }
 
-    public async Task SaveOrUpdateAsync(DividendEventItem item, string? userId = null)
+    public async Task SaveOrUpdateAsync(DividendEventItem item)
     {
-        var effectiveUserId = NormalizeUserId(userId);
+        var userId = await _currentUserService.GetRequiredUserIdAsync();
         var utcNow = DateTime.UtcNow;
 
-        // Controllo duplicati logici
-        var duplicate = await _db.DividendEvents
+        var normalizedSymbol = NormalizeSymbol(item.Symbol);
+
+        if (string.IsNullOrWhiteSpace(normalizedSymbol))
+            throw new InvalidOperationException("Il simbolo è obbligatorio.");
+
+        if (string.IsNullOrWhiteSpace(item.CompanyName))
+            throw new InvalidOperationException("Il nome società è obbligatorio.");
+
+        if (!item.PaymentDate.HasValue)
+            throw new InvalidOperationException("La Payment Date è obbligatoria.");
+
+        if (item.ExDividendDate.HasValue &&
+            item.PaymentDate.HasValue &&
+            item.PaymentDate.Value.Date < item.ExDividendDate.Value.Date)
+        {
+            throw new InvalidOperationException("La Payment Date non può essere precedente alla Ex-Dividend Date.");
+        }
+
+        if (item.AnnualDividend < 0)
+            throw new InvalidOperationException("Annual Dividend non può essere negativo.");
+
+        if (item.PeriodicDividend < 0)
+            throw new InvalidOperationException("Periodic Dividend non può essere negativo.");
+
+        var duplicateExists = await _db.DividendEvents
             .AnyAsync(x =>
-                x.UserId == effectiveUserId &&
+                x.UserId == userId &&
                 x.Id != item.Id &&
-                x.Symbol == item.Symbol &&
+                x.Symbol == normalizedSymbol &&
                 x.ExDividendDate == item.ExDividendDate &&
                 x.PaymentDate == item.PaymentDate);
 
-        if (duplicate)
+        if (duplicateExists)
         {
             throw new InvalidOperationException(
-                "Esiste già un evento dividendo con lo stesso simbolo e le stesse date per questo utente.");
+                "Esiste già un evento dividendo con lo stesso simbolo, Ex-Date e Payment Date per questo utente.");
         }
 
         if (item.Id == 0)
         {
             var entity = new DividendEventEntity
             {
-                UserId = effectiveUserId,
+                UserId = userId,
                 InstrumentId = item.InstrumentId,
-                Symbol = item.Symbol.Trim(),
+                Symbol = normalizedSymbol,
                 CompanyName = item.CompanyName.Trim(),
-                Sector = item.Sector.Trim(),
+                Sector = item.Sector?.Trim() ?? string.Empty,
                 ExDividendDate = item.ExDividendDate,
                 PaymentDate = item.PaymentDate,
                 AnnualDividend = item.AnnualDividend,
@@ -118,17 +142,15 @@ public sealed class DividendCalendarService
         else
         {
             var entity = await _db.DividendEvents
-                .FirstOrDefaultAsync(x => x.Id == item.Id && x.UserId == effectiveUserId);
+                .FirstOrDefaultAsync(x => x.Id == item.Id && x.UserId == userId);
 
             if (entity is null)
-            {
                 throw new InvalidOperationException("Evento dividendo non trovato.");
-            }
 
             entity.InstrumentId = item.InstrumentId;
-            entity.Symbol = item.Symbol.Trim();
+            entity.Symbol = normalizedSymbol;
             entity.CompanyName = item.CompanyName.Trim();
-            entity.Sector = item.Sector.Trim();
+            entity.Sector = item.Sector?.Trim() ?? string.Empty;
             entity.ExDividendDate = item.ExDividendDate;
             entity.PaymentDate = item.PaymentDate;
             entity.AnnualDividend = item.AnnualDividend;
@@ -140,12 +162,12 @@ public sealed class DividendCalendarService
         await _db.SaveChangesAsync();
     }
 
-    public async Task DeleteAsync(int id, string? userId = null)
+    public async Task DeleteAsync(int id)
     {
-        var effectiveUserId = NormalizeUserId(userId);
+        var userId = await _currentUserService.GetRequiredUserIdAsync();
 
         var entity = await _db.DividendEvents
-            .FirstOrDefaultAsync(x => x.Id == id && x.UserId == effectiveUserId);
+            .FirstOrDefaultAsync(x => x.Id == id && x.UserId == userId);
 
         if (entity is null)
             return;
@@ -154,12 +176,12 @@ public sealed class DividendCalendarService
         await _db.SaveChangesAsync();
     }
 
-    public async Task ClearAsync(string? userId = null)
+    public async Task ClearAsync()
     {
-        var effectiveUserId = NormalizeUserId(userId);
+        var userId = await _currentUserService.GetRequiredUserIdAsync();
 
         var entities = await _db.DividendEvents
-            .Where(x => x.UserId == effectiveUserId)
+            .Where(x => x.UserId == userId)
             .ToListAsync();
 
         if (entities.Count == 0)
@@ -170,16 +192,18 @@ public sealed class DividendCalendarService
     }
 
     // =========================
-    // Logica di calcolo
+    // Calcoli per pagina Dividendi
     // =========================
 
-    public async Task<List<DividendCalendarItemDto>> GetDividendPositionsAsync(string? userId = null, CancellationToken cancellationToken = default)
+    public async Task<List<DividendCalendarItemDto>> GetDividendPositionsAsync(
+        CancellationToken cancellationToken = default)
     {
-        var effectiveUserId = NormalizeUserId(userId);
+        var userId = await _currentUserService.GetRequiredUserIdAsync();
+
         var snapshot = _portfolioState.GetSnapshot();
 
         var dividendEvents = await _db.DividendEvents
-            .Where(x => x.UserId == effectiveUserId)
+            .Where(x => x.UserId == userId)
             .OrderBy(x => x.PaymentDate)
             .ThenBy(x => x.Symbol)
             .ToListAsync(cancellationToken);
@@ -187,7 +211,6 @@ public sealed class DividendCalendarService
         if (dividendEvents.Count == 0)
             return new List<DividendCalendarItemDto>();
 
-        // Solo posizioni LONG su stock / ETF
         var holdings = snapshot.Positions
             .Where(p => p.IsBuy)
             .Where(p =>
@@ -240,13 +263,18 @@ public sealed class DividendCalendarService
             .ToList();
     }
 
-    public async Task<List<DividendMonthlySummaryDto>> GetMonthlySummariesAsync(string? userId = null, CancellationToken cancellationToken = default)
+    public async Task<List<DividendMonthlySummaryDto>> GetMonthlySummariesAsync(
+        CancellationToken cancellationToken = default)
     {
-        var items = await GetDividendPositionsAsync(userId, cancellationToken);
+        var items = await GetDividendPositionsAsync(cancellationToken);
 
         return items
             .Where(x => x.PaymentDate.HasValue)
-            .GroupBy(x => new { x.PaymentDate!.Value.Year, x.PaymentDate!.Value.Month })
+            .GroupBy(x => new
+            {
+                x.PaymentDate!.Value.Year,
+                x.PaymentDate!.Value.Month
+            })
             .Select(g => new DividendMonthlySummaryDto
             {
                 Year = g.Key.Year,
@@ -254,7 +282,10 @@ public sealed class DividendCalendarService
                 Label = new DateTime(g.Key.Year, g.Key.Month, 1)
                     .ToString("MMMM yyyy", CultureInfo.GetCultureInfo("it-IT")),
                 EstimatedGrossTotal = Math.Round(g.Sum(x => x.EstimatedGrossAmount), 2),
-                Items = g.OrderBy(x => x.PaymentDate).ThenBy(x => x.Symbol).ToList()
+                Items = g
+                    .OrderBy(x => x.PaymentDate)
+                    .ThenBy(x => x.Symbol)
+                    .ToList()
             })
             .OrderBy(x => x.Year)
             .ThenBy(x => x.Month)
@@ -265,15 +296,10 @@ public sealed class DividendCalendarService
     // Helpers
     // =========================
 
-    private static string NormalizeUserId(string? userId)
+    private static string NormalizeSymbol(string? symbol)
     {
-        return string.IsNullOrWhiteSpace(userId)
-            ? DefaultUserId
-            : userId.Trim();
-    }
-
-    private static string NormalizeSymbol(string symbol)
-    {
-        return symbol.Trim().ToUpperInvariant();
+        return string.IsNullOrWhiteSpace(symbol)
+            ? string.Empty
+            : symbol.Trim().ToUpperInvariant();
     }
 }
