@@ -31,12 +31,12 @@ builder.Services.AddDefaultIdentity<IdentityUser>(options =>
 .AddEntityFrameworkStores<ApplicationDbContext>();
 
 builder.Services.AddCascadingAuthenticationState();
+
 builder.Services.AddScoped<CurrentUserService>();
 builder.Services.AddScoped<PortfolioTargetService>();
 builder.Services.AddScoped<DividendCalendarService>();
 
 builder.Services.AddHttpClient<EtoroRestClient>();
-
 builder.Services.AddHostedService<PortfolioRefreshService>();
 
 builder.Services.AddRazorComponents()
@@ -50,7 +50,6 @@ if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error");
 }
-
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();

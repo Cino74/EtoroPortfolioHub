@@ -1,0 +1,86 @@
+﻿@page
+@model LoginModel
+
+@{
+    ViewData["Title"] = "Accesso";
+}
+
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-5 col-md-7">
+            <div class="card shadow-sm border-0">
+                <div class="card-body p-4 p-md-5">
+
+                    <div class="text-center mb-4">
+                        <h1 class="h3 mb-2">Etoro Portfolio Hub</h1>
+                        <p class="text-muted mb-0">
+                            Accedi al tuo account
+                        </p>
+                    </div>
+
+                    <form id="account" method="post">
+                        <div asp-validation-summary="ModelOnly" class="text-danger mb-3" role="alert"></div>
+
+                        <div class="mb-3">
+                            <label asp-for="Input.Email" class="form-label">Email</label>
+                            <input asp-for="Input.Email"
+                                   class="form-control form-control-lg"
+                                   autocomplete="username"
+                                   aria-required="true"
+                                   placeholder="nome@email.com" />
+                            <span asp-validation-for="Input.Email" class="text-danger small"></span>
+                        </div>
+
+                        <div class="mb-3">
+                            <label asp-for="Input.Password" class="form-label">Password</label>
+                            <input asp-for="Input.Password"
+                                   class="form-control form-control-lg"
+                                   autocomplete="current-password"
+                                   aria-required="true"
+                                   placeholder="Password" />
+                            <span asp-validation-for="Input.Password" class="text-danger small"></span>
+                        </div>
+
+                        <div class="d-flex justify-content-between align-items-center mb-4">
+                            <div class="form-check">
+                                <input asp-for="Input.RememberMe" class="form-check-input" />
+                                <label asp-for="Input.RememberMe" class="form-check-label">
+                                    Ricordami
+                                </label>
+                            </div>
+
+                            <a asp-page="./ForgotPassword" class="small">
+                                Password dimenticata?
+                            </a>
+                        </div>
+
+                        <button id="login-submit"
+                                type="submit"
+                                class="btn btn-primary btn-lg w-100">
+                            Accedi
+                        </button>
+
+                        <div class="text-center mt-4">
+                            <span class="text-muted">Non hai ancora un account?</span>
+                            <a asp-page="./Register"
+                               asp-route-returnUrl="@Model.ReturnUrl">
+                                Registrati
+                            </a>
+                        </div>
+                    </form>
+
+                </div>
+            </div>
+
+            <div class="text-center mt-3">
+                <a href="/" class="text-muted small">
+                    Torna alla Home
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}
