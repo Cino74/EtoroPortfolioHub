@@ -14,6 +14,7 @@ public sealed class ApplicationDbContext : IdentityDbContext<IdentityUser>
 
     public DbSet<PortfolioTargetEntity> PortfolioTargets => Set<PortfolioTargetEntity>();
     public DbSet<DividendEventEntity> DividendEvents => Set<DividendEventEntity>();
+    public DbSet<EtoroConnectionEntity> EtoroConnections => Set<EtoroConnectionEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -87,6 +88,40 @@ public sealed class ApplicationDbContext : IdentityDbContext<IdentityUser>
                 .IsRequired();
 
             entity.HasIndex(x => new { x.UserId, x.Symbol, x.ExDividendDate, x.PaymentDate })
+                .IsUnique();
+        });
+
+        modelBuilder.Entity<EtoroConnectionEntity>(entity =>
+        {
+            entity.ToTable("EtoroConnections");
+
+            entity.HasKey(x => x.Id);
+
+            entity.Property(x => x.UserId)
+                .HasMaxLength(200)
+                .IsRequired();
+
+            entity.Property(x => x.Environment)
+                .HasMaxLength(20)
+                .IsRequired();
+
+            entity.Property(x => x.PermissionMode)
+                .HasMaxLength(20)
+                .IsRequired();
+
+            entity.Property(x => x.EncryptedUserKey)
+                .IsRequired();
+
+            entity.Property(x => x.LastValidationMessage)
+                .HasMaxLength(1000);
+
+            entity.Property(x => x.CreatedUtc)
+                .IsRequired();
+
+            entity.Property(x => x.UpdatedUtc)
+                .IsRequired();
+
+            entity.HasIndex(x => x.UserId)
                 .IsUnique();
         });
     }

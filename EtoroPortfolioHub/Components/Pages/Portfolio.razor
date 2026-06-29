@@ -1,29 +1,53 @@
 ﻿@page "/portfolio"
 @using EtoroPortfolioHub.Models
-@using EtoroPortfolioHub.State
+@using EtoroPortfolioHub.Services
 @using EtoroPortfolioHub.Components.Shared
-@using Microsoft.Extensions.Options
-@inject PortfolioState PortfolioState
-@inject IOptionsMonitor<EtoroOptions> EtoroOptionsMonitor
-@attribute [Authorize]
 @using Microsoft.AspNetCore.Authorization
-
+@using Microsoft.Extensions.Options
+@attribute [Authorize]
+@inject UserPortfolioService UserPortfolioService
+@inject IOptionsMonitor<EtoroOptions> EtoroOptionsMonitor
 @implements IAsyncDisposable
 
 <PageTitle>Portfolio</PageTitle>
 
 <h3 class="mb-3">Portafoglio</h3>
 
-<div class="mb-3">
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
     <span class="badge text-bg-secondary">
         Refresh ogni @_refreshIntervalSeconds secondi
     </span>
+
+    <button class="btn btn-outline-primary btn-sm"
+            @onclick="RefreshSnapshotAsync"
+            disabled="@_isRefreshing">
+        @(_isRefreshing ? "Aggiornamento..." : "Aggiorna ora")
+    </button>
 </div>
 
-@if (_snapshot is null)
+@if (_isLoading)
 {
     <div class="alert alert-info">
-        Caricamento dati...
+        Caricamento dati portafoglio...
+    </div>
+}
+else if (!string.IsNullOrWhiteSpace(_errorMessage))
+{
+    <div class="alert alert-warning">
+        <div class="fw-semibold mb-1">Portafoglio non disponibile</div>
+        <div>@_errorMessage</div>
+
+        <div class="mt-3">
+            <a class="btn btn-primary btn-sm" href="/settings/etoro">
+                Configura account eToro
+            </a>
+        </div>
+    </div>
+}
+else if (_snapshot is null)
+{
+    <div class="alert alert-info">
+        Nessun dato disponibile.
     </div>
 }
 else
@@ -238,8 +262,7 @@ else
                                                             Precedente
                                                         </button>
 
-                                                        <button class="btn btn-sm btn-outline-secondary"
-                                                                disabled>
+                                                        <button class="btn btn-sm btn-outline-secondary" disabled>
                                                             Pagina @currentPage / @totalPages
                                                         </button>
 
@@ -278,11 +301,15 @@ else
 
     private string _selectedCategory = "TUTTI";
 
+    private bool _isLoading = true;
+    private bool _isRefreshing;
+    private string? _errorMessage;
+
     protected override async Task OnInitializedAsync()
     {
         _refreshIntervalSeconds = Math.Max(1, EtoroOptionsMonitor.CurrentValue.RefreshIntervalSeconds);
 
-        await LoadSnapshotAsync();
+        await LoadSnapshotAsync(refreshFromEtoro: true);
 
         _cts = new CancellationTokenSource();
         _timer = new PeriodicTimer(TimeSpan.FromSeconds(_refreshIntervalSeconds));
@@ -296,7 +323,7 @@ else
         {
             while (_timer is not null && await _timer.WaitForNextTickAsync(cancellationToken))
             {
-                await LoadSnapshotAsync();
+                await LoadSnapshotAsync(refreshFromEtoro: true);
                 await InvokeAsync(StateHasChanged);
             }
         }
@@ -306,32 +333,56 @@ else
         }
     }
 
-    private Task LoadSnapshotAsync()
+    private async Task RefreshSnapshotAsync()
     {
-        _snapshot = PortfolioState.GetSnapshot();
-        _groupedRows = BuildGroupedRows(_snapshot);
+        await LoadSnapshotAsync(refreshFromEtoro: true);
+    }
 
-        var validIds = _groupedRows.Select(x => x.InstrumentId).ToHashSet();
+    private async Task LoadSnapshotAsync(bool refreshFromEtoro)
+    {
+        _isLoading = _snapshot is null;
+        _isRefreshing = true;
+        _errorMessage = null;
 
-        var expandedKeysToRemove = _expandedRows.Keys
-            .Where(id => !validIds.Contains(id))
-            .ToList();
-
-        foreach (var key in expandedKeysToRemove)
+        try
         {
-            _expandedRows.Remove(key);
+            _snapshot = refreshFromEtoro
+                ? await UserPortfolioService.RefreshCurrentUserSnapshotAsync()
+                : await UserPortfolioService.GetCurrentUserSnapshotAsync();
+
+            _groupedRows = BuildGroupedRows(_snapshot);
+
+            var validIds = _groupedRows.Select(x => x.InstrumentId).ToHashSet();
+
+            var expandedKeysToRemove = _expandedRows.Keys
+                .Where(id => !validIds.Contains(id))
+                .ToList();
+
+            foreach (var key in expandedKeysToRemove)
+            {
+                _expandedRows.Remove(key);
+            }
+
+            var pageKeysToRemove = _detailPageByInstrument.Keys
+                .Where(id => !validIds.Contains(id))
+                .ToList();
+
+            foreach (var key in pageKeysToRemove)
+            {
+                _detailPageByInstrument.Remove(key);
+            }
         }
-
-        var pageKeysToRemove = _detailPageByInstrument.Keys
-            .Where(id => !validIds.Contains(id))
-            .ToList();
-
-        foreach (var key in pageKeysToRemove)
+        catch (Exception ex)
         {
-            _detailPageByInstrument.Remove(key);
+            _snapshot = null;
+            _groupedRows = new();
+            _errorMessage = ex.Message;
         }
-
-        return Task.CompletedTask;
+        finally
+        {
+            _isLoading = false;
+            _isRefreshing = false;
+        }
     }
 
     private void SetCategoryFilter(string category)
@@ -444,17 +495,31 @@ else
                 var totalUnits = group.Sum(x => x.Units);
                 var totalPnL = group.Sum(x => x.NetProfit);
 
-                var weightedOpenRate = totalInvested == 0
-                    ? 0
+                var weightedOpenRate = totalInvested == 0m
+                    ? 0m
                     : group.Sum(x => x.OpenRate * x.InvestedAmount) / totalInvested;
 
                 var directions = group.Select(x => x.IsBuy ? "LONG" : "SHORT").Distinct().ToList();
                 var direction = directions.Count == 1 ? directions[0] : "MIXED";
 
-                var symbol = group.Select(x => x.Symbol).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? group.Key.ToString();
-                var instrumentName = group.Select(x => x.InstrumentName).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? $"Strumento {group.Key}";
-                var instrumentTypeId = group.Select(x => x.InstrumentTypeId).FirstOrDefault(x => x > 0);
-                var instrumentTypeDescription = group.Select(x => x.InstrumentTypeDescription).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? "N/D";
+                var symbol =
+                    group.Select(x => x.Symbol)
+                         .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))
+                    ?? group.Key.ToString();
+
+                var instrumentName =
+                    group.Select(x => x.InstrumentName)
+                         .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))
+                    ?? $"Strumento {group.Key}";
+
+                var instrumentTypeId =
+                    group.Select(x => x.InstrumentTypeId)
+                         .FirstOrDefault(x => x > 0);
+
+                var instrumentTypeDescription =
+                    group.Select(x => x.InstrumentTypeDescription)
+                         .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))
+                    ?? "N/D";
 
                 return new PortfolioGroupedRowDto
                 {
@@ -471,9 +536,12 @@ else
                     CurrentRate = Math.Round(
                         group.Where(x => x.CurrentRate != 0m)
                              .Select(x => x.CurrentRate)
-                             .LastOrDefault(), 2),
+                             .LastOrDefault(),
+                        2),
                     TotalPnL = Math.Round(totalPnL, 2),
-                    ProfitPercent = totalInvested == 0 ? 0 : Math.Round(totalPnL / totalInvested * 100m, 2),
+                    ProfitPercent = totalInvested == 0m
+                        ? 0m
+                        : Math.Round(totalPnL / totalInvested * 100m, 2),
                     LastTimestamp = group.Max(x => x.Timestamp)
                 };
             })

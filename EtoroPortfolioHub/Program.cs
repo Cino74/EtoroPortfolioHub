@@ -39,6 +39,10 @@ builder.Services.AddScoped<DividendCalendarService>();
 builder.Services.AddHttpClient<EtoroRestClient>();
 builder.Services.AddHostedService<PortfolioRefreshService>();
 
+builder.Services.AddHttpClient<EtoroCredentialService>();
+
+builder.Services.AddScoped<UserPortfolioService>();
+
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 

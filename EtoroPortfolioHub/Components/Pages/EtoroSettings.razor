@@ -1,0 +1,292 @@
+﻿@page "/settings/etoro"
+@using Microsoft.AspNetCore.Authorization
+@using EtoroPortfolioHub.Models
+@using EtoroPortfolioHub.Services
+@attribute [Authorize]
+@inject EtoroCredentialService EtoroCredentialService
+
+<PageTitle>Impostazioni eToro</PageTitle>
+
+<h3 class="mb-3">Impostazioni eToro</h3>
+
+@if (_isLoading)
+{
+    <div class="alert alert-info">
+        Caricamento configurazione eToro...
+    </div>
+}
+else
+{
+    @if (!string.IsNullOrWhiteSpace(_message))
+    {
+        <div class="alert @(_isError ? "alert-danger" : "alert-success")">
+            @_message
+        </div>
+    }
+
+    <div class="row g-4">
+        <div class="col-lg-5">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Collega account eToro</h5>
+
+                    <div class="mb-3">
+                        <label class="form-label">Ambiente</label>
+                        <select class="form-select" @bind="_environment">
+                            <option value="Demo">Demo</option>
+                            <option value="Real">Real</option>
+                        </select>
+                        <div class="form-text">
+                            La User Key eToro è valida solo per l'ambiente scelto in fase di creazione.
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Permessi</label>
+                        <select class="form-select" @bind="_permissionMode">
+                            <option value="Read">Read</option>
+                            <option value="Write">Write</option>
+                        </select>
+                        <div class="form-text">
+                            Per questa app, al momento è sufficiente Read.
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">User Key eToro</label>
+                        <input type="password"
+                               class="form-control"
+                               @bind="_userKey"
+                               placeholder="@(_connection?.IsConfigured == true ? "Chiave già configurata - inseriscine una nuova per sostituirla" : "Incolla la User Key eToro")" />
+                    </div>
+
+                    <div class="d-flex flex-wrap gap-2">
+                        <button class="btn btn-outline-primary"
+                                @onclick="TestTemporaryAsync"
+                                disabled="@_isBusy">
+                            Test chiave inserita
+                        </button>
+
+                        <button class="btn btn-primary"
+                                @onclick="SaveAsync"
+                                disabled="@_isBusy">
+                            Salva
+                        </button>
+
+                        @if (_connection?.IsConfigured == true)
+                        {
+                            <button class="btn btn-outline-danger"
+                                    @onclick="DeleteAsync"
+                                    disabled="@_isBusy">
+                                Rimuovi collegamento
+                            </button>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-7">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Stato collegamento</h5>
+
+                    @if (_connection?.IsConfigured == true)
+                    {
+                        <dl class="row mb-0">
+                            <dt class="col-sm-4">Stato</dt>
+                            <dd class="col-sm-8">
+                                <span class="badge text-bg-success">Configurato</span>
+                            </dd>
+
+                            <dt class="col-sm-4">Ambiente</dt>
+                            <dd class="col-sm-8">@_connection.Environment</dd>
+
+                            <dt class="col-sm-4">Permessi</dt>
+                            <dd class="col-sm-8">@_connection.PermissionMode</dd>
+
+                            <dt class="col-sm-4">GCID</dt>
+                            <dd class="col-sm-8">@(_connection.Gcid?.ToString() ?? "-")</dd>
+
+                            <dt class="col-sm-4">Real CID</dt>
+                            <dd class="col-sm-8">@(_connection.RealCid?.ToString() ?? "-")</dd>
+
+                            <dt class="col-sm-4">Demo CID</dt>
+                            <dd class="col-sm-8">@(_connection.DemoCid?.ToString() ?? "-")</dd>
+
+                            <dt class="col-sm-4">Ultima verifica OK</dt>
+                            <dd class="col-sm-8">
+                                @(_connection.LastSuccessfulValidationUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "-")
+                            </dd>
+
+                            <dt class="col-sm-4">Ultimo messaggio</dt>
+                            <dd class="col-sm-8">@_connection.LastValidationMessage</dd>
+                        </dl>
+
+                        <div class="mt-3">
+                            <button class="btn btn-outline-secondary"
+                                    @onclick="TestSavedAsync"
+                                    disabled="@_isBusy">
+                                Test connessione salvata
+                            </button>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-warning mb-0">
+                            Nessun account eToro collegato.
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div class="alert alert-light border mt-4">
+                <strong>Nota sicurezza:</strong>
+                la User Key viene salvata cifrata nel database. Non verrà mai mostrata nuovamente in chiaro.
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _isLoading = true;
+    private bool _isBusy;
+    private bool _isError;
+    private string? _message;
+
+    private EtoroConnectionItem? _connection;
+
+    private string _environment = "Demo";
+    private string _permissionMode = "Read";
+    private string _userKey = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        _message = null;
+        _isError = false;
+
+        try
+        {
+            _connection = await EtoroCredentialService.GetCurrentAsync();
+
+            _environment = _connection.Environment;
+            _permissionMode = _connection.PermissionMode;
+            _userKey = string.Empty;
+        }
+        catch (Exception ex)
+        {
+            _isError = true;
+            _message = $"Errore durante il caricamento: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task TestTemporaryAsync()
+    {
+        _isBusy = true;
+        _message = null;
+        _isError = false;
+
+        try
+        {
+            var result = await EtoroCredentialService.TestTemporaryConnectionAsync(
+                _userKey,
+                _environment,
+                _permissionMode);
+
+            _isError = !result.Success;
+            _message = result.Message;
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+
+    private async Task TestSavedAsync()
+    {
+        _isBusy = true;
+        _message = null;
+        _isError = false;
+
+        try
+        {
+            var result = await EtoroCredentialService.TestCurrentConnectionAsync();
+
+            _isError = !result.Success;
+            _message = result.Message;
+
+            await LoadAsync();
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _isBusy = true;
+        _message = null;
+        _isError = false;
+
+        try
+        {
+            await EtoroCredentialService.SaveAsync(
+                _userKey,
+                _environment,
+                _permissionMode);
+
+            var result = await EtoroCredentialService.TestCurrentConnectionAsync();
+
+            _isError = !result.Success;
+            _message = result.Success
+                ? "Connessione eToro salvata e verificata correttamente."
+                : result.Message;
+
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _isError = true;
+            _message = $"Errore durante il salvataggio: {ex.Message}";
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        _isBusy = true;
+        _message = null;
+        _isError = false;
+
+        try
+        {
+            await EtoroCredentialService.DeleteAsync();
+
+            _message = "Collegamento eToro rimosso.";
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _isError = true;
+            _message = $"Errore durante la rimozione: {ex.Message}";
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+}

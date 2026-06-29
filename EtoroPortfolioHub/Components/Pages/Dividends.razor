@@ -1,20 +1,44 @@
 ﻿@page "/dividendi"
 @using EtoroPortfolioHub.Models
 @using EtoroPortfolioHub.Services
-@using EtoroPortfolioHub.State
-@inject DividendCalendarService DividendCalendarService
-@inject PortfolioState PortfolioState
-@attribute [Authorize]
 @using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject DividendCalendarService DividendCalendarService
+@inject UserPortfolioService UserPortfolioService
 
 <PageTitle>Dividendi</PageTitle>
 
 <h3 class="mb-3">Dividendi</h3>
 
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
+    <div class="text-muted">
+        Gestione manuale dei dividendi per i titoli presenti nel tuo portafoglio.
+    </div>
+
+    <button class="btn btn-outline-primary btn-sm"
+            @onclick="RefreshPortfolioAsync"
+            disabled="@_isBusy">
+        Aggiorna portafoglio
+    </button>
+</div>
+
 @if (_isLoading)
 {
     <div class="alert alert-info">
         Caricamento dati dividendi...
+    </div>
+}
+else if (!string.IsNullOrWhiteSpace(_portfolioErrorMessage))
+{
+    <div class="alert alert-warning">
+        <div class="fw-semibold mb-1">Portafoglio non disponibile</div>
+        <div>@_portfolioErrorMessage</div>
+
+        <div class="mt-3">
+            <a href="/settings/etoro" class="btn btn-sm btn-outline-primary">
+                Configura account eToro
+            </a>
+        </div>
     </div>
 }
 else
@@ -52,9 +76,7 @@ else
             <div class="card shadow-sm h-100">
                 <div class="card-body">
                     <div class="text-muted small">Prossimo pagamento in arrivo</div>
-                    <div class="fw-bold">
-                        @(_nextPaymentLabel ?? "-")
-                    </div>
+                    <div class="fw-bold">@(_nextPaymentLabel ?? "-")</div>
                     <div class="small text-muted mt-1">
                         @(_nextPaymentAmount.HasValue ? _nextPaymentAmount.Value.ToString("N2") : "")
                     </div>
@@ -63,7 +85,6 @@ else
         </div>
     </div>
 
-    <!-- Messaggi -->
     @if (!string.IsNullOrWhiteSpace(_message))
     {
         <div class="alert @(_isError ? "alert-danger" : "alert-success")">
@@ -71,11 +92,10 @@ else
         </div>
     }
 
-    <!-- Nota -->
     <div class="alert alert-light border mb-4">
         <strong>Nota:</strong>
         ogni record rappresenta <strong>un singolo pagamento dividendo</strong>.
-        Quindi, se un titolo paga 4 volte l’anno, vanno inseriti 4 record distinti con date diverse.
+        Se un titolo paga trimestralmente, inserisci 4 record distinti con date diverse.
         Le entrate mostrate sono una <strong>stima lorda</strong> basata sulle unità attualmente in portafoglio.
     </div>
 
@@ -91,7 +111,9 @@ else
 
                         @if (_editModel.Id != 0)
                         {
-                            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ResetForm">
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-secondary"
+                                    @onclick="ResetForm">
                                 Nuovo
                             </button>
                         }
@@ -119,17 +141,22 @@ else
 
                         <div class="mb-3">
                             <label class="form-label">Simbolo</label>
-                            <InputText @bind-Value="_editModel.Symbol" class="form-control" readonly />
+                            <InputText @bind-Value="_editModel.Symbol"
+                                       class="form-control"
+                                       readonly />
                         </div>
 
                         <div class="mb-3">
                             <label class="form-label">Nome società</label>
-                            <InputText @bind-Value="_editModel.CompanyName" class="form-control" readonly />
+                            <InputText @bind-Value="_editModel.CompanyName"
+                                       class="form-control"
+                                       readonly />
                         </div>
 
                         <div class="mb-3">
                             <label class="form-label">Settore</label>
-                            <InputText @bind-Value="_editModel.Sector" class="form-control" />
+                            <InputText @bind-Value="_editModel.Sector"
+                                       class="form-control" />
                         </div>
 
                         <div class="mb-3">
@@ -161,14 +188,16 @@ else
                                 <label class="form-label">Annual Dividend</label>
                                 <InputNumber @bind-Value="_editModel.AnnualDividend"
                                              class="form-control"
-                                             TValue="decimal" />
+                                             TValue="decimal"
+                                             step="0.0001" />
                             </div>
 
                             <div class="col-md-6">
                                 <label class="form-label">Periodic Dividend</label>
                                 <InputNumber @bind-Value="_editModel.PeriodicDividend"
                                              class="form-control"
-                                             TValue="decimal" />
+                                             TValue="decimal"
+                                             step="0.0001" />
                             </div>
                         </div>
 
@@ -180,11 +209,16 @@ else
                         </div>
 
                         <div class="d-flex gap-2">
-                            <button type="submit" class="btn btn-primary" disabled="@_isSaving">
-                                @(_isSaving ? "Salvataggio..." : "Salva")
+                            <button type="submit"
+                                    class="btn btn-primary"
+                                    disabled="@_isBusy">
+                                @(_isBusy ? "Salvataggio..." : "Salva")
                             </button>
 
-                            <button type="button" class="btn btn-outline-secondary" @onclick="ResetForm" disabled="@_isSaving">
+                            <button type="button"
+                                    class="btn btn-outline-secondary"
+                                    @onclick="ResetForm"
+                                    disabled="@_isBusy">
                                 Annulla
                             </button>
                         </div>
@@ -193,7 +227,7 @@ else
             </div>
         </div>
 
-        <!-- Eventi dividendo salvati -->
+        <!-- Eventi salvati -->
         <div class="col-xl-8">
             <div class="card shadow-sm h-100">
                 <div class="card-body">
@@ -257,7 +291,7 @@ else
         </div>
     </div>
 
-    <!-- Titoli in portafoglio che generano dividendi -->
+    <!-- Titoli con dividendi -->
     <div class="card shadow-sm mb-4">
         <div class="card-body">
             <h5 class="card-title mb-3">Titoli in portafoglio con dividendi</h5>
@@ -365,14 +399,19 @@ else
 
 @code {
     private bool _isLoading = true;
-    private bool _isSaving = false;
-    private bool _isError = false;
+    private bool _isBusy;
+    private bool _isError;
 
     private string? _message;
+    private string? _portfolioErrorMessage;
+
+    private PortfolioSnapshot? _snapshot;
 
     private List<DividendEventItem> _allEvents = new();
     private List<DividendCalendarItemDto> _dividendPositions = new();
     private List<DividendMonthlySummaryDto> _monthlySummaries = new();
+
+    private List<PortfolioOptionVm> _portfolioOptions = new();
 
     private decimal _thisMonthTotal;
     private decimal _nextMonthTotal;
@@ -383,89 +422,203 @@ else
 
     private DividendEventItem _editModel = CreateNewModel();
 
-    private List<PortfolioOptionVm> _portfolioOptions = new();
-
     protected override async Task OnInitializedAsync()
     {
-        await LoadAsync();
+        await LoadAsync(refreshPortfolio: false);
     }
 
-    private async Task LoadAsync()
+    private async Task RefreshPortfolioAsync()
     {
-        _isLoading = true;
+        await LoadAsync(refreshPortfolio: true);
+    }
+
+    private async Task LoadAsync(bool refreshPortfolio)
+    {
+        _isLoading = _snapshot is null;
+        _isBusy = true;
         _message = null;
+        _portfolioErrorMessage = null;
         _isError = false;
 
         try
         {
-            LoadPortfolioOptions();
+            _snapshot = refreshPortfolio
+                ? await UserPortfolioService.RefreshCurrentUserSnapshotAsync()
+                : await UserPortfolioService.GetCurrentUserSnapshotAsync();
 
             _allEvents = await DividendCalendarService.GetAllAsync();
-            _dividendPositions = await DividendCalendarService.GetDividendPositionsAsync();
-            _monthlySummaries = await DividendCalendarService.GetMonthlySummariesAsync();
 
-            var today = DateTime.Today;
-            var thisMonth = new DateTime(today.Year, today.Month, 1);
-            var nextMonth = thisMonth.AddMonths(1);
-
-            _thisMonthTotal = _monthlySummaries
-                .Where(x => x.Year == thisMonth.Year && x.Month == thisMonth.Month)
-                .Sum(x => x.EstimatedGrossTotal);
-
-            _nextMonthTotal = _monthlySummaries
-                .Where(x => x.Year == nextMonth.Year && x.Month == nextMonth.Month)
-                .Sum(x => x.EstimatedGrossTotal);
-
-            _annualTotal = Math.Round(_dividendPositions.Sum(x => x.AnnualDividend * x.UnitsHeld), 2);
-
-            var nextPayment = _dividendPositions
-                .Where(x => x.PaymentDate.HasValue && x.PaymentDate.Value.Date >= today)
-                .OrderBy(x => x.PaymentDate)
-                .FirstOrDefault();
-
-            if (nextPayment is not null)
-            {
-                _nextPaymentLabel = $"{nextPayment.Symbol} - {nextPayment.PaymentDate:dd/MM/yyyy}";
-                _nextPaymentAmount = nextPayment.EstimatedGrossAmount;
-            }
-            else
-            {
-                _nextPaymentLabel = null;
-                _nextPaymentAmount = null;
-            }
+            BuildPortfolioOptions();
+            BuildDividendPositions();
+            BuildMonthlySummaries();
+            BuildKpis();
         }
         catch (Exception ex)
         {
-            _isError = true;
-            _message = $"Errore durante il caricamento dei dividendi: {ex.Message}";
+            _snapshot = null;
+            _allEvents = new();
+            _dividendPositions = new();
+            _monthlySummaries = new();
+            _portfolioOptions = new();
+
+            _portfolioErrorMessage = ex.Message;
         }
         finally
         {
             _isLoading = false;
+            _isBusy = false;
         }
     }
 
-    private void LoadPortfolioOptions()
+    private void BuildPortfolioOptions()
     {
-        var snapshot = PortfolioState.GetSnapshot();
+        if (_snapshot is null)
+        {
+            _portfolioOptions = new();
+            return;
+        }
 
-        _portfolioOptions = snapshot.Positions
+        _portfolioOptions = _snapshot.Positions
             .Where(p => p.IsBuy)
-            .Select(p => new PortfolioOptionVm
+            .GroupBy(p => p.InstrumentId)
+            .Select(g => new PortfolioOptionVm
             {
-                InstrumentId = p.InstrumentId,
-                Symbol = p.Symbol,
-                InstrumentName = p.InstrumentName
+                InstrumentId = g.Key,
+                Symbol = g.Select(x => x.Symbol).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? g.Key.ToString(),
+                InstrumentName = g.Select(x => x.InstrumentName).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? $"Strumento {g.Key}",
+                Units = g.Sum(x => x.Units)
             })
-            .GroupBy(x => x.InstrumentId)
-            .Select(g => g.First())
             .OrderBy(x => x.Symbol)
             .ToList();
     }
 
+    private void BuildDividendPositions()
+    {
+        if (_snapshot is null || _allEvents.Count == 0)
+        {
+            _dividendPositions = new();
+            return;
+        }
+
+        var holdings = _snapshot.Positions
+            .Where(p => p.IsBuy)
+            .GroupBy(p => NormalizeSymbol(p.Symbol))
+            .Select(g => new
+            {
+                Symbol = g.Key,
+                InstrumentId = g.Select(x => x.InstrumentId).FirstOrDefault(),
+                InstrumentName = g.Select(x => x.InstrumentName).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? g.Key,
+                Units = g.Sum(x => x.Units)
+            })
+            .Where(x => !string.IsNullOrWhiteSpace(x.Symbol) && x.Units > 0)
+            .ToList();
+
+        var result = new List<DividendCalendarItemDto>();
+
+        foreach (var holding in holdings)
+        {
+            var matches = _allEvents
+                .Where(x => NormalizeSymbol(x.Symbol) == holding.Symbol)
+                .OrderBy(x => x.PaymentDate ?? DateTime.MaxValue)
+                .ToList();
+
+            foreach (var match in matches)
+            {
+                result.Add(new DividendCalendarItemDto
+                {
+                    Id = match.Id,
+                    InstrumentId = match.InstrumentId ?? holding.InstrumentId,
+                    Symbol = match.Symbol,
+                    CompanyName = match.CompanyName,
+                    InstrumentName = holding.InstrumentName,
+                    Sector = match.Sector,
+                    ExDividendDate = match.ExDividendDate,
+                    PaymentDate = match.PaymentDate,
+                    AnnualDividend = match.AnnualDividend,
+                    PeriodicDividend = match.PeriodicDividend,
+                    UnitsHeld = holding.Units,
+                    Notes = match.Notes
+                });
+            }
+        }
+
+        _dividendPositions = result
+            .OrderBy(x => x.PaymentDate ?? DateTime.MaxValue)
+            .ThenBy(x => x.Symbol)
+            .ToList();
+    }
+
+    private void BuildMonthlySummaries()
+    {
+        _monthlySummaries = _dividendPositions
+            .Where(x => x.PaymentDate.HasValue)
+            .GroupBy(x => new
+            {
+                x.PaymentDate!.Value.Year,
+                x.PaymentDate!.Value.Month
+            })
+            .Select(g => new DividendMonthlySummaryDto
+            {
+                Year = g.Key.Year,
+                Month = g.Key.Month,
+                Label = new DateTime(g.Key.Year, g.Key.Month, 1)
+                    .ToString("MMMM yyyy", System.Globalization.CultureInfo.GetCultureInfo("it-IT")),
+                EstimatedGrossTotal = Math.Round(g.Sum(x => x.EstimatedGrossAmount), 2),
+                Items = g
+                    .OrderBy(x => x.PaymentDate)
+                    .ThenBy(x => x.Symbol)
+                    .ToList()
+            })
+            .OrderBy(x => x.Year)
+            .ThenBy(x => x.Month)
+            .ToList();
+    }
+
+    private void BuildKpis()
+    {
+        var today = DateTime.Today;
+        var thisMonth = new DateTime(today.Year, today.Month, 1);
+        var nextMonth = thisMonth.AddMonths(1);
+
+        _thisMonthTotal = _monthlySummaries
+            .Where(x => x.Year == thisMonth.Year && x.Month == thisMonth.Month)
+            .Sum(x => x.EstimatedGrossTotal);
+
+        _nextMonthTotal = _monthlySummaries
+            .Where(x => x.Year == nextMonth.Year && x.Month == nextMonth.Month)
+            .Sum(x => x.EstimatedGrossTotal);
+
+        _annualTotal = _dividendPositions
+            .GroupBy(x => NormalizeSymbol(x.Symbol))
+            .Select(g =>
+            {
+                var first = g.First();
+                return first.AnnualDividend * first.UnitsHeld;
+            })
+            .Sum();
+
+        _annualTotal = Math.Round(_annualTotal, 2);
+
+        var nextPayment = _dividendPositions
+            .Where(x => x.PaymentDate.HasValue && x.PaymentDate.Value.Date >= today)
+            .OrderBy(x => x.PaymentDate)
+            .FirstOrDefault();
+
+        if (nextPayment is not null)
+        {
+            _nextPaymentLabel = $"{nextPayment.Symbol} - {nextPayment.PaymentDate:dd/MM/yyyy}";
+            _nextPaymentAmount = nextPayment.EstimatedGrossAmount;
+        }
+        else
+        {
+            _nextPaymentLabel = null;
+            _nextPaymentAmount = null;
+        }
+    }
+
     private async Task SaveAsync()
     {
-        _isSaving = true;
+        _isBusy = true;
         _message = null;
         _isError = false;
 
@@ -480,7 +633,7 @@ else
                 : "Evento dividendo aggiornato correttamente.";
 
             ResetForm();
-            await LoadAsync();
+            await LoadAsync(refreshPortfolio: false);
         }
         catch (Exception ex)
         {
@@ -489,7 +642,7 @@ else
         }
         finally
         {
-            _isSaving = false;
+            _isBusy = false;
         }
     }
 
@@ -537,7 +690,7 @@ else
             }
 
             _message = "Evento dividendo eliminato correttamente.";
-            await LoadAsync();
+            await LoadAsync(refreshPortfolio: false);
         }
         catch (Exception ex)
         {
@@ -572,6 +725,7 @@ else
             return;
 
         var selected = _portfolioOptions.FirstOrDefault(x => x.InstrumentId == instrumentId);
+
         if (selected is null)
             return;
 
@@ -600,7 +754,8 @@ else
         if (!model.PaymentDate.HasValue)
             throw new InvalidOperationException("La Payment Date è obbligatoria.");
 
-        if (model.ExDividendDate.HasValue && model.PaymentDate.HasValue &&
+        if (model.ExDividendDate.HasValue &&
+            model.PaymentDate.HasValue &&
             model.PaymentDate.Value.Date < model.ExDividendDate.Value.Date)
         {
             throw new InvalidOperationException("La Payment Date non può essere precedente alla Ex-Dividend Date.");
@@ -613,11 +768,18 @@ else
             throw new InvalidOperationException("Periodic Dividend non può essere negativo.");
     }
 
+    private static string NormalizeSymbol(string? symbol)
+    {
+        return string.IsNullOrWhiteSpace(symbol)
+            ? string.Empty
+            : symbol.Trim().ToUpperInvariant();
+    }
+
     private sealed class PortfolioOptionVm
     {
         public int InstrumentId { get; set; }
         public string Symbol { get; set; } = string.Empty;
         public string InstrumentName { get; set; } = string.Empty;
+        public decimal Units { get; set; }
     }
 }
-``

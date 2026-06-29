@@ -1,60 +1,141 @@
-﻿using EtoroPortfolioHub.Models;
+﻿using EtoroPortfolioHub.Data;
+using EtoroPortfolioHub.Models;
 using EtoroPortfolioHub.State;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace EtoroPortfolioHub.Services;
 
 public sealed class PortfolioRefreshService : BackgroundService
 {
-    private readonly ILogger<PortfolioRefreshService> _logger;
-    private readonly EtoroRestClient _restClient;
+    private const string ProtectorPurpose = "EtoroPortfolioHub.EtoroUserKey.v1";
+
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly PortfolioState _portfolioState;
-    private readonly EtoroOptions _options;
+    private readonly IDataProtector _protector;
+    private readonly IOptionsMonitor<EtoroOptions> _optionsMonitor;
+    private readonly ILogger<PortfolioRefreshService> _logger;
 
     public PortfolioRefreshService(
-        ILogger<PortfolioRefreshService> logger,
-        EtoroRestClient restClient,
+        IServiceScopeFactory scopeFactory,
         PortfolioState portfolioState,
-        IOptions<EtoroOptions> options)
+        IDataProtectionProvider dataProtectionProvider,
+        IOptionsMonitor<EtoroOptions> optionsMonitor,
+        ILogger<PortfolioRefreshService> logger)
     {
-        _logger = logger;
-        _restClient = restClient;
+        _scopeFactory = scopeFactory;
         _portfolioState = portfolioState;
-        _options = options.Value;
+        _protector = dataProtectionProvider.CreateProtector(ProtectorPurpose);
+        _optionsMonitor = optionsMonitor;
+        _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("PortfolioRefreshService avviato.");
+        var refreshIntervalSeconds = Math.Max(
+            10,
+            _optionsMonitor.CurrentValue.RefreshIntervalSeconds);
 
-        while (!stoppingToken.IsCancellationRequested)
+        _logger.LogInformation(
+            "PortfolioRefreshService avviato. Refresh ogni {Seconds} secondi.",
+            refreshIntervalSeconds);
+
+        await RefreshAllConfiguredUsersAsync(stoppingToken);
+
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(refreshIntervalSeconds));
+
+        try
         {
+            while (await timer.WaitForNextTickAsync(stoppingToken))
+            {
+                await RefreshAllConfiguredUsersAsync(stoppingToken);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogInformation("PortfolioRefreshService arrestato.");
+        }
+    }
+
+    private async Task RefreshAllConfiguredUsersAsync(CancellationToken cancellationToken)
+    {
+        using var scope = _scopeFactory.CreateScope();
+
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var etoroRestClient = scope.ServiceProvider.GetRequiredService<EtoroRestClient>();
+
+        var connections = await db.EtoroConnections
+            .Where(x => !string.IsNullOrWhiteSpace(x.EncryptedUserKey))
+            .OrderBy(x => x.UserId)
+            .ToListAsync(cancellationToken);
+
+        if (connections.Count == 0)
+        {
+            _logger.LogDebug("Nessuna connessione eToro configurata. Refresh saltato.");
+            return;
+        }
+
+        _logger.LogInformation(
+            "Refresh portafogli eToro per {Count} utenti configurati.",
+            connections.Count);
+
+        foreach (var connection in connections)
+        {
+            if (cancellationToken.IsCancellationRequested)
+                break;
+
             try
             {
-                var snapshot = await _restClient.GetPortfolioSnapshotAsync(stoppingToken);
-                _portfolioState.SetSnapshot(snapshot);
+                var userKey = _protector.Unprotect(connection.EncryptedUserKey);
+                var environment = NormalizeEnvironment(connection.Environment);
 
                 _logger.LogInformation(
-                    "Portfolio aggiornato. Posizioni ricevute: {Count}",
-                    snapshot.Positions.Count);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Errore durante il refresh del portfolio.");
-            }
+                    "Refresh portafoglio eToro per UserId {UserId}, ambiente {Environment}.",
+                    connection.UserId,
+                    environment);
 
-            try
-            {
-                await Task.Delay(
-                    TimeSpan.FromSeconds(Math.Max(1, _options.RefreshIntervalSeconds)),
-                    stoppingToken);
+                var snapshot = await etoroRestClient.GetPortfolioSnapshotAsync(
+                    userKey,
+                    environment,
+                    cancellationToken);
+
+                _portfolioState.SetSnapshot(connection.UserId, snapshot);
+
+                connection.LastSuccessfulValidationUtc = DateTime.UtcNow;
+                connection.LastValidationMessage = "Refresh portafoglio completato correttamente.";
+                connection.UpdatedUtc = DateTime.UtcNow;
+
+                await db.SaveChangesAsync(cancellationToken);
+
+                _logger.LogInformation(
+                    "Refresh portafoglio completato per UserId {UserId}. Posizioni: {PositionsCount}.",
+                    connection.UserId,
+                    snapshot.Positions.Count);
             }
             catch (OperationCanceledException)
             {
-                break;
+                throw;
+            }
+            catch (Exception ex)
+            {
+                connection.LastValidationMessage = $"Errore refresh portafoglio: {ex.Message}";
+                connection.UpdatedUtc = DateTime.UtcNow;
+
+                await db.SaveChangesAsync(cancellationToken);
+
+                _logger.LogWarning(
+                    ex,
+                    "Errore durante il refresh portafoglio per UserId {UserId}.",
+                    connection.UserId);
             }
         }
+    }
 
-        _logger.LogInformation("PortfolioRefreshService terminato.");
+    private static string NormalizeEnvironment(string? environment)
+    {
+        return string.Equals(environment, "Real", StringComparison.OrdinalIgnoreCase)
+            ? "Real"
+            : "Demo";
     }
 }

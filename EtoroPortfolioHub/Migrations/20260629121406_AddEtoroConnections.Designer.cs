@@ -4,6 +4,7 @@ using EtoroPortfolioHub.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace EtoroPortfolioHub.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260629121406_AddEtoroConnections")]
+    partial class AddEtoroConnections
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -85,64 +88,6 @@ namespace EtoroPortfolioHub.Migrations
                         .HasFilter("[ExDividendDate] IS NOT NULL AND [PaymentDate] IS NOT NULL");
 
                     b.ToTable("DividendEvents", (string)null);
-                });
-
-            modelBuilder.Entity("EtoroPortfolioHub.Data.Entities.EtoroConnectionEntity", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("CreatedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<long?>("DemoCid")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("EncryptedUserKey")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("Environment")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<long?>("Gcid")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTime?>("LastSuccessfulValidationUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("LastValidationMessage")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.Property<string>("PermissionMode")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<long?>("RealCid")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTime>("UpdatedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("UserId")
-                        .IsUnique();
-
-                    b.ToTable("EtoroConnections", (string)null);
                 });
 
             modelBuilder.Entity("EtoroPortfolioHub.Data.Entities.PortfolioTargetEntity", b =>

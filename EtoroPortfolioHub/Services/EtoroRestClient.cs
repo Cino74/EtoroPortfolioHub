@@ -1,4 +1,5 @@
-﻿using System.Text.Json;
+﻿using System.Globalization;
+using System.Text.Json;
 using EtoroPortfolioHub.Models;
 using Microsoft.Extensions.Options;
 
@@ -20,16 +21,41 @@ public sealed class EtoroRestClient
         _logger = logger;
     }
 
-    public async Task<PortfolioSnapshot> GetPortfolioSnapshotAsync(CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Metodo legacy per compatibilità temporanea.
+    /// Usa ancora la UserKey globale da configurazione.
+    /// Verrà rimosso quando tutte le pagine useranno UserPortfolioService.
+    /// </summary>
+    public Task<PortfolioSnapshot> GetPortfolioSnapshotAsync(
+        CancellationToken cancellationToken = default)
     {
-        var url = BuildPortfolioUrl();
+        return GetPortfolioSnapshotAsync(
+            _options.UserKey,
+            _options.Environment,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Metodo multiutente.
+    /// Usa la UserKey e l'ambiente eToro dell'utente corrente.
+    /// </summary>
+    public async Task<PortfolioSnapshot> GetPortfolioSnapshotAsync(
+        string userKey,
+        string environment,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(_options.ApiKey))
+            throw new InvalidOperationException("Public API Key eToro non configurata.");
+
+        if (string.IsNullOrWhiteSpace(userKey))
+            throw new InvalidOperationException("User Key eToro non configurata per l'utente corrente.");
+
+        var url = BuildPortfolioUrl(environment);
 
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.Add("x-api-key", _options.ApiKey);
-        request.Headers.Add("x-user-key", _options.UserKey);
-        request.Headers.Add("x-request-id", Guid.NewGuid().ToString());
+        AddEtoroHeaders(request, userKey);
 
-        _logger.LogInformation("Chiamata eToro verso URL: {Url}", url);
+        _logger.LogInformation("Chiamata eToro portfolio verso URL: {Url}", url);
 
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         var raw = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -37,7 +63,7 @@ public sealed class EtoroRestClient
         if (!response.IsSuccessStatusCode)
         {
             _logger.LogError(
-                "Errore chiamata eToro. Status: {StatusCode}. URL: {Url}. Body: {Body}",
+                "Errore chiamata eToro portfolio. Status: {StatusCode}. URL: {Url}. Body: {Body}",
                 response.StatusCode,
                 url,
                 raw);
@@ -53,8 +79,10 @@ public sealed class EtoroRestClient
             .Distinct()
             .ToList();
 
-        // 1) Enrichment con nome, simbolo e tipo ufficiale eToro
-        var metadata = await GetInstrumentMetadataAsync(instrumentIds, cancellationToken);
+        var metadata = await GetInstrumentMetadataAsync(
+            instrumentIds,
+            userKey,
+            cancellationToken);
 
         foreach (var position in snapshot.Positions)
         {
@@ -77,8 +105,10 @@ public sealed class EtoroRestClient
                 position.Symbol = position.InstrumentId.ToString();
         }
 
-        // 2) Enrichment con prezzi correnti
-        var rates = await GetInstrumentRatesAsync(instrumentIds, cancellationToken);
+        var rates = await GetInstrumentRatesAsync(
+            instrumentIds,
+            userKey,
+            cancellationToken);
 
         foreach (var position in snapshot.Positions)
         {
@@ -102,24 +132,30 @@ public sealed class EtoroRestClient
         return snapshot;
     }
 
-    private string BuildPortfolioUrl()
+    private static string BuildPortfolioUrl(string environment)
     {
         const string root = "https://public-api.etoro.com";
 
-        return _options.Environment.Equals("Demo", StringComparison.OrdinalIgnoreCase)
+        return environment.Equals("Demo", StringComparison.OrdinalIgnoreCase)
             ? $"{root}/api/v1/trading/info/demo/pnl"
             : $"{root}/api/v1/trading/info/real/pnl";
     }
 
+    private void AddEtoroHeaders(HttpRequestMessage request, string userKey)
+    {
+        request.Headers.Add("x-api-key", _options.ApiKey);
+        request.Headers.Add("x-user-key", userKey);
+        request.Headers.Add("x-request-id", Guid.NewGuid().ToString());
+    }
+
     private async Task<Dictionary<int, string>> GetInstrumentTypeDescriptionsAsync(
+        string userKey,
         CancellationToken cancellationToken = default)
     {
         var url = "https://public-api.etoro.com/api/v1/market-data/instrument-types";
 
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.Add("x-api-key", _options.ApiKey);
-        request.Headers.Add("x-user-key", _options.UserKey);
-        request.Headers.Add("x-request-id", Guid.NewGuid().ToString());
+        AddEtoroHeaders(request, userKey);
 
         _logger.LogInformation("Chiamata instrument types verso URL: {Url}", url);
 
@@ -162,6 +198,7 @@ public sealed class EtoroRestClient
 
     private async Task<Dictionary<int, InstrumentMetadataDto>> GetInstrumentMetadataAsync(
         IEnumerable<int> instrumentIds,
+        string userKey,
         CancellationToken cancellationToken = default)
     {
         var ids = instrumentIds
@@ -172,15 +209,15 @@ public sealed class EtoroRestClient
         if (ids.Count == 0)
             return new Dictionary<int, InstrumentMetadataDto>();
 
-        var typeDescriptions = await GetInstrumentTypeDescriptionsAsync(cancellationToken);
+        var typeDescriptions = await GetInstrumentTypeDescriptionsAsync(
+            userKey,
+            cancellationToken);
 
         var url =
             $"https://public-api.etoro.com/api/v1/market-data/instruments?instrumentIds={string.Join(",", ids)}";
 
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.Add("x-api-key", _options.ApiKey);
-        request.Headers.Add("x-user-key", _options.UserKey);
-        request.Headers.Add("x-request-id", Guid.NewGuid().ToString());
+        AddEtoroHeaders(request, userKey);
 
         _logger.LogInformation("Chiamata metadata strumenti verso URL: {Url}", url);
 
@@ -232,6 +269,7 @@ public sealed class EtoroRestClient
 
     private async Task<Dictionary<int, InstrumentRateDto>> GetInstrumentRatesAsync(
         IEnumerable<int> instrumentIds,
+        string userKey,
         CancellationToken cancellationToken = default)
     {
         var ids = instrumentIds
@@ -246,9 +284,7 @@ public sealed class EtoroRestClient
             $"https://public-api.etoro.com/api/v1/market-data/instruments/rates?instrumentIds={string.Join(",", ids)}";
 
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.Add("x-api-key", _options.ApiKey);
-        request.Headers.Add("x-user-key", _options.UserKey);
-        request.Headers.Add("x-request-id", Guid.NewGuid().ToString());
+        AddEtoroHeaders(request, userKey);
 
         _logger.LogInformation("Chiamata market-data rates verso URL: {Url}", url);
 
@@ -337,11 +373,11 @@ public sealed class EtoroRestClient
             snapshot.UnrealizedPnL = rootUnrealizedPnL;
 
         var directPositionProfitLoss = 0m;
+
         JsonElement positionsElement = default;
         var foundPositions = false;
 
-        if (hasClientPortfolio &&
-            portfolioElement.TryGetProperty("positions", out var clientPositions) &&
+        if (portfolioElement.TryGetProperty("positions", out var clientPositions) &&
             clientPositions.ValueKind == JsonValueKind.Array)
         {
             positionsElement = clientPositions;
@@ -366,8 +402,10 @@ public sealed class EtoroRestClient
                 {
                     PositionId = GetInt64(item, "positionID", "positionId"),
                     InstrumentId = GetInt32(item, "instrumentID", "instrumentId"),
+
                     Symbol = GetString(item, "symbol"),
                     InstrumentName = GetString(item, "instrumentName"),
+
                     IsBuy = GetBool(item, "isBuy"),
 
                     InvestedAmount = GetDecimal(item, "amount", "investedAmount", "initialAmountInDollars"),
@@ -398,8 +436,7 @@ public sealed class EtoroRestClient
         {
             var pendingOrdersAmount = 0m;
 
-            if (hasClientPortfolio &&
-                portfolioElement.TryGetProperty("ordersForOpen", out var ordersForOpen) &&
+            if (portfolioElement.TryGetProperty("ordersForOpen", out var ordersForOpen) &&
                 ordersForOpen.ValueKind == JsonValueKind.Array)
             {
                 foreach (var order in ordersForOpen.EnumerateArray())
@@ -412,8 +449,7 @@ public sealed class EtoroRestClient
                 }
             }
 
-            if (hasClientPortfolio &&
-                portfolioElement.TryGetProperty("orders", out var orders) &&
+            if (portfolioElement.TryGetProperty("orders", out var orders) &&
                 orders.ValueKind == JsonValueKind.Array)
             {
                 foreach (var order in orders.EnumerateArray())
@@ -438,8 +474,7 @@ public sealed class EtoroRestClient
         {
             var mirrorProfitLoss = 0m;
 
-            if (hasClientPortfolio &&
-                portfolioElement.TryGetProperty("mirrors", out var mirrors) &&
+            if (portfolioElement.TryGetProperty("mirrors", out var mirrors) &&
                 mirrors.ValueKind == JsonValueKind.Array)
             {
                 foreach (var mirror in mirrors.EnumerateArray())
@@ -491,8 +526,11 @@ public sealed class EtoroRestClient
         {
             if (element.TryGetProperty(name, out var prop))
             {
-                if (prop.ValueKind == JsonValueKind.True) return true;
-                if (prop.ValueKind == JsonValueKind.False) return false;
+                if (prop.ValueKind == JsonValueKind.True)
+                    return true;
+
+                if (prop.ValueKind == JsonValueKind.False)
+                    return false;
 
                 if (prop.ValueKind == JsonValueKind.String &&
                     bool.TryParse(prop.GetString(), out var value))
@@ -557,8 +595,8 @@ public sealed class EtoroRestClient
                 if (prop.ValueKind == JsonValueKind.String &&
                     decimal.TryParse(
                         prop.GetString(),
-                        System.Globalization.NumberStyles.Any,
-                        System.Globalization.CultureInfo.InvariantCulture,
+                        NumberStyles.Any,
+                        CultureInfo.InvariantCulture,
                         out value))
                 {
                     return value;
@@ -579,14 +617,17 @@ public sealed class EtoroRestClient
                 return 0m;
         }
 
-        if (current.ValueKind == JsonValueKind.Number && current.TryGetDecimal(out var number))
+        if (current.ValueKind == JsonValueKind.Number &&
+            current.TryGetDecimal(out var number))
+        {
             return number;
+        }
 
         if (current.ValueKind == JsonValueKind.String &&
             decimal.TryParse(
                 current.GetString(),
-                System.Globalization.NumberStyles.Any,
-                System.Globalization.CultureInfo.InvariantCulture,
+                NumberStyles.Any,
+                CultureInfo.InvariantCulture,
                 out var parsed))
         {
             return parsed;
